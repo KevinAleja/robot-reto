@@ -1,0 +1,662 @@
+[
+  {
+    "id": "robot-tab",
+    "type": "tab",
+    "label": "Robot MQTT Control",
+    "disabled": false,
+    "info": "GUI web simple para controlar un robot ESP32 mediante MQTT."
+  },
+  {
+    "id": "mqtt-broker-local",
+    "type": "mqtt-broker",
+    "name": "HiveMQ public broker",
+    "broker": "broker.hivemq.com",
+    "port": "1883",
+    "clientid": "node-red-robot-gui",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": ""
+  },
+  {
+    "id": "http-get-robot",
+    "type": "http in",
+    "z": "robot-tab",
+    "name": "GET /robot",
+    "url": "/robot",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 130,
+    "y": 80,
+    "wires": [
+      [
+        "robot-html-template"
+      ]
+    ]
+  },
+  {
+    "id": "robot-html-template",
+    "type": "template",
+    "z": "robot-tab",
+    "name": "Robot GUI HTML",
+    "field": "payload",
+    "fieldType": "msg",
+    "format": "handlebars",
+    "syntax": "mustache",
+    "template": "<!doctype html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Robot MQTT</title>\n  <style>\n    body { font-family: system-ui, sans-serif; background: #111827; color: #f9fafb; margin: 0; padding: 24px; }\n    main { max-width: 720px; margin: auto; }\n    .card { background: #1f2937; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 10px 30px #0004; }\n    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }\n    button { border: 0; border-radius: 12px; padding: 18px; font-size: 18px; font-weight: 700; cursor: pointer; background: #2563eb; color: white; }\n    button:hover { filter: brightness(1.1); }\n    .stop { background: #dc2626; }\n    .auto { background: #16a34a; }\n    .muted { color: #9ca3af; }\n    input { width: 100%; }\n    pre { background: #030712; padding: 12px; border-radius: 12px; overflow-x: auto; }\n  </style>\n</head>\n<body>\n<main>\n  <h1>Robot MQTT</h1>\n  <p class=\"muted\">Node-RED → Mosquitto → ESP32 → L298N → motores</p>\n\n  <section class=\"card\">\n    <label for=\"speed\">Velocidad PWM: <strong id=\"speedValue\">180</strong></label>\n    <input id=\"speed\" type=\"range\" min=\"0\" max=\"255\" value=\"180\">\n  </section>\n\n  <section class=\"card grid\">\n    <span></span>\n    <button onclick=\"sendCommand('FORWARD')\">▲ FORWARD</button>\n    <span></span>\n    <button onclick=\"sendCommand('CCW')\">↺ CCW</button>\n    <button class=\"stop\" onclick=\"sendCommand('STOP')\">■ STOP</button>\n    <button onclick=\"sendCommand('CW')\">↻ CW</button>\n    <span></span>\n    <button onclick=\"sendCommand('BACKWARD')\">▼ BACKWARD</button>\n    <span></span>\n  </section>\n\n  <section class=\"card\">\n    <button class=\"auto\" onclick=\"sendCommand('RECTANGLE')\">Iniciar rutina rectangular</button>\n  </section>\n\n  <section class=\"card\">\n    <h2>Respuesta del robot</h2>\n    <pre id=\"response\">Esperando respuesta...</pre>\n  </section>\n\n  <section class=\"card\">\n    <h2>Distancia ultrasónica</h2>\n    <p id=\"distance\">Esperando telemetría...</p>\n    <pre id=\"telemetry\"></pre>\n  </section>\n</main>\n<script>\nconst speed = document.getElementById('speed');\nconst speedValue = document.getElementById('speedValue');\nspeed.addEventListener('input', () => speedValue.textContent = speed.value);\n\nasync function sendCommand(command) {\n  const response = await fetch('/api/cmd', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ command, speed: Number(speed.value) })\n  });\n  const data = await response.json();\n  document.getElementById('response').textContent = JSON.stringify(data, null, 2);\n}\n\nasync function refreshStatus() {\n  try {\n    const response = await fetch('/api/status');\n    const data = await response.json();\n    document.getElementById('response').textContent = JSON.stringify(data.response, null, 2);\n    const telemetry = data.telemetry;\n    document.getElementById('telemetry').textContent = JSON.stringify(telemetry, null, 2);\n    document.getElementById('distance').textContent = telemetry && telemetry.valid\n      ? `${telemetry.value} ${telemetry.unit || 'cm'}`\n      : `Sensor no disponible: ${(telemetry && telemetry.reason) || 'sin medición'}`;\n  } catch (err) {\n    document.getElementById('response').textContent = err.message;\n  }\n}\n\nsetInterval(refreshStatus, 1000);\nrefreshStatus();\n</script>\n</body>\n</html>",
+    "output": "str",
+    "x": 360,
+    "y": 80,
+    "wires": [
+      [
+        "http-response"
+      ]
+    ]
+  },
+  {
+    "id": "http-response",
+    "type": "http response",
+    "z": "robot-tab",
+    "name": "HTTP response",
+    "statusCode": "",
+    "headers": {},
+    "x": 610,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "http-post-cmd",
+    "type": "http in",
+    "z": "robot-tab",
+    "name": "POST /api/cmd",
+    "url": "/api/cmd",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 130,
+    "y": 180,
+    "wires": [
+      [
+        "build-command"
+      ]
+    ]
+  },
+  {
+    "id": "build-command",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Validate and publish command",
+    "func": "const allowed = ['FORWARD', 'BACKWARD', 'CW', 'CCW', 'STOP', 'RECTANGLE'];\nconst body = msg.payload || {};\nconst command = String(body.command || '').toUpperCase();\nconst speed = Number.isFinite(Number(body.speed)) ? Math.max(0, Math.min(255, Number(body.speed))) : 180;\n\nif (!allowed.includes(command)) {\n    msg.statusCode = 400;\n    msg.payload = { ok: false, error: 'Invalid command', allowed };\n    return [null, msg];\n}\n\nconst mqttMsg = {\n    topic: 'robot/command',\n    payload: JSON.stringify({ command, speed })\n};\n\nflow.set('lastCommand', { command, speed, sentAt: new Date().toISOString() });\nmsg.payload = { ok: true, sent: { command, speed } };\nreturn [mqttMsg, msg];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 180,
+    "wires": [
+      [
+        "mqtt-out-command"
+      ],
+      [
+        "http-response-cmd"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-out-command",
+    "type": "mqtt out",
+    "z": "robot-tab",
+    "name": "MQTT robot/command",
+    "topic": "",
+    "qos": "0",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "mqtt-broker-local",
+    "x": 660,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "http-response-cmd",
+    "type": "http response",
+    "z": "robot-tab",
+    "name": "Command response",
+    "statusCode": "",
+    "headers": {},
+    "x": 670,
+    "y": 210,
+    "wires": []
+  },
+  {
+    "id": "http-get-status",
+    "type": "http in",
+    "z": "robot-tab",
+    "name": "GET /api/status",
+    "url": "/api/status",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 130,
+    "y": 280,
+    "wires": [
+      [
+        "read-status"
+      ]
+    ]
+  },
+  {
+    "id": "read-status",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Read last status",
+    "func": "msg.payload = {\n    response: flow.get('lastResponse') || { state: 'UNKNOWN', detail: 'No MQTT response received yet' },\n    telemetry: flow.get('lastTelemetry') || null,\n    lastCommand: flow.get('lastCommand') || null\n};\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 280,
+    "wires": [
+      [
+        "http-response-status"
+      ]
+    ]
+  },
+  {
+    "id": "http-response-status",
+    "type": "http response",
+    "z": "robot-tab",
+    "name": "Status response",
+    "statusCode": "",
+    "headers": {},
+    "x": 610,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "mqtt-in-status",
+    "type": "mqtt in",
+    "z": "robot-tab",
+    "name": "MQTT robot/response",
+    "topic": "robot/response",
+    "qos": "0",
+    "datatype": "auto-detect",
+    "broker": "mqtt-broker-local",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 380,
+    "wires": [
+      [
+        "store-status"
+      ]
+    ]
+  },
+  {
+    "id": "store-status",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Store response",
+    "func": "let payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { node.warn('Ignored invalid MQTT response'); return null; }\n}\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    node.warn('Ignored invalid MQTT response');\n    return null;\n}\npayload.receivedAt = new Date().toISOString();\nflow.set('lastResponse', payload);\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 380,
+    "wires": [
+      [
+        "debug-status",
+        "dashboard-status-format"
+      ]
+    ]
+  },
+  {
+    "id": "debug-status",
+    "type": "debug",
+    "z": "robot-tab",
+    "name": "Robot response",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 600,
+    "y": 380,
+    "wires": []
+  },
+  {
+    "id": "mqtt-in-telemetry",
+    "type": "mqtt in",
+    "z": "robot-tab",
+    "name": "MQTT robot/telemetry",
+    "topic": "robot/telemetry",
+    "qos": "0",
+    "datatype": "auto-detect",
+    "broker": "mqtt-broker-local",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 460,
+    "wires": [
+      [
+        "store-telemetry"
+      ]
+    ]
+  },
+  {
+    "id": "store-telemetry",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Store telemetry",
+    "func": "let payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { node.warn('Ignored invalid MQTT telemetry'); return null; }\n}\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    node.warn('Ignored invalid MQTT telemetry');\n    return null;\n}\npayload.receivedAt = new Date().toISOString();\nflow.set('lastTelemetry', payload);\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 460,
+    "wires": [
+      [
+        "debug-telemetry",
+        "dashboard-telemetry-format"
+      ]
+    ]
+  },
+  {
+    "id": "debug-telemetry",
+    "type": "debug",
+    "z": "robot-tab",
+    "name": "Robot telemetry",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 620,
+    "y": 460,
+    "wires": []
+  },
+  {
+    "id": "robot-ui-tab",
+    "type": "ui_tab",
+    "name": "Robot",
+    "icon": "directions_car",
+    "disabled": false,
+    "hidden": false
+  },
+  {
+    "id": "robot-ui-control-group",
+    "type": "ui_group",
+    "name": "Control manual",
+    "tab": "robot-ui-tab",
+    "order": 1,
+    "disp": true,
+    "width": "6",
+    "collapse": false,
+    "className": ""
+  },
+  {
+    "id": "robot-ui-status-group",
+    "type": "ui_group",
+    "name": "Respuesta del robot",
+    "tab": "robot-ui-tab",
+    "order": 2,
+    "disp": true,
+    "width": "6",
+    "collapse": false,
+    "className": ""
+  },
+  {
+    "id": "robot-ui-speed",
+    "type": "ui_slider",
+    "z": "robot-tab",
+    "name": "Velocidad PWM",
+    "label": "Velocidad PWM",
+    "tooltip": "",
+    "group": "robot-ui-control-group",
+    "order": 1,
+    "width": 6,
+    "height": 1,
+    "passthru": true,
+    "outs": "all",
+    "topic": "speed",
+    "topicType": "str",
+    "min": 0,
+    "max": "255",
+    "step": 1,
+    "className": "",
+    "x": 140,
+    "y": 540,
+    "wires": [
+      [
+        "dashboard-store-speed"
+      ]
+    ]
+  },
+  {
+    "id": "dashboard-store-speed",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Store dashboard speed",
+    "func": "const speed = Math.max(0, Math.min(255, Number(msg.payload) || 0));\nflow.set('dashboardSpeed', speed);\nmsg.payload = speed;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "flow.set('dashboardSpeed', flow.get('dashboardSpeed') || 180);",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 540,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "robot-ui-forward",
+    "type": "ui_button",
+    "z": "robot-tab",
+    "name": "FORWARD",
+    "group": "robot-ui-control-group",
+    "order": 2,
+    "width": 2,
+    "height": 1,
+    "passthru": false,
+    "label": "▲ FORWARD",
+    "tooltip": "Avanzar",
+    "color": "",
+    "bgcolor": "#2563eb",
+    "className": "",
+    "icon": "",
+    "payload": "FORWARD",
+    "payloadType": "str",
+    "topic": "command",
+    "topicType": "str",
+    "x": 130,
+    "y": 600,
+    "wires": [
+      [
+        "dashboard-build-command"
+      ]
+    ]
+  },
+  {
+    "id": "robot-ui-ccw",
+    "type": "ui_button",
+    "z": "robot-tab",
+    "name": "CCW",
+    "group": "robot-ui-control-group",
+    "order": 3,
+    "width": 2,
+    "height": 1,
+    "passthru": false,
+    "label": "↺ CCW",
+    "tooltip": "Girar antihorario",
+    "color": "",
+    "bgcolor": "#2563eb",
+    "className": "",
+    "icon": "",
+    "payload": "CCW",
+    "payloadType": "str",
+    "topic": "command",
+    "topicType": "str",
+    "x": 120,
+    "y": 640,
+    "wires": [
+      [
+        "dashboard-build-command"
+      ]
+    ]
+  },
+  {
+    "id": "robot-ui-stop",
+    "type": "ui_button",
+    "z": "robot-tab",
+    "name": "STOP",
+    "group": "robot-ui-control-group",
+    "order": 4,
+    "width": 2,
+    "height": 1,
+    "passthru": false,
+    "label": "■ STOP",
+    "tooltip": "Detener",
+    "color": "",
+    "bgcolor": "#dc2626",
+    "className": "",
+    "icon": "",
+    "payload": "STOP",
+    "payloadType": "str",
+    "topic": "command",
+    "topicType": "str",
+    "x": 120,
+    "y": 680,
+    "wires": [
+      [
+        "dashboard-build-command"
+      ]
+    ]
+  },
+  {
+    "id": "robot-ui-cw",
+    "type": "ui_button",
+    "z": "robot-tab",
+    "name": "CW",
+    "group": "robot-ui-control-group",
+    "order": 5,
+    "width": 2,
+    "height": 1,
+    "passthru": false,
+    "label": "↻ CW",
+    "tooltip": "Girar horario",
+    "color": "",
+    "bgcolor": "#2563eb",
+    "className": "",
+    "icon": "",
+    "payload": "CW",
+    "payloadType": "str",
+    "topic": "command",
+    "topicType": "str",
+    "x": 120,
+    "y": 720,
+    "wires": [
+      [
+        "dashboard-build-command"
+      ]
+    ]
+  },
+  {
+    "id": "robot-ui-backward",
+    "type": "ui_button",
+    "z": "robot-tab",
+    "name": "BACKWARD",
+    "group": "robot-ui-control-group",
+    "order": 6,
+    "width": 2,
+    "height": 1,
+    "passthru": false,
+    "label": "▼ BACKWARD",
+    "tooltip": "Retroceder",
+    "color": "",
+    "bgcolor": "#2563eb",
+    "className": "",
+    "icon": "",
+    "payload": "BACKWARD",
+    "payloadType": "str",
+    "topic": "command",
+    "topicType": "str",
+    "x": 140,
+    "y": 760,
+    "wires": [
+      [
+        "dashboard-build-command"
+      ]
+    ]
+  },
+  {
+    "id": "dashboard-build-command",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Dashboard command to MQTT",
+    "func": "const command = String(msg.payload || '').toUpperCase();\nconst speed = Math.max(0, Math.min(255, Number(flow.get('dashboardSpeed')) || 180));\nflow.set('lastCommand', { command, speed, sentAt: new Date().toISOString(), source: 'dashboard' });\nmsg.topic = 'robot/command';\nmsg.payload = JSON.stringify({ command, speed });\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 700,
+    "wires": [
+      [
+        "mqtt-out-command"
+      ]
+    ]
+  },
+  {
+    "id": "robot-ui-state",
+    "type": "ui_text",
+    "z": "robot-tab",
+    "group": "robot-ui-status-group",
+    "order": 1,
+    "width": 6,
+    "height": 1,
+    "name": "Respuesta del robot",
+    "label": "Respuesta del robot",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "className": "",
+    "x": 620,
+    "y": 540,
+    "wires": []
+  },
+  {
+    "id": "robot-ui-telemetry",
+    "type": "ui_text",
+    "z": "robot-tab",
+    "group": "robot-ui-status-group",
+    "order": 2,
+    "width": 6,
+    "height": 2,
+    "name": "Telemetría",
+    "label": "Telemetría",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "className": "",
+    "x": 630,
+    "y": 600,
+    "wires": []
+  },
+  {
+    "id": "dashboard-status-format",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Format dashboard response",
+    "func": "let payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { payload = { raw: msg.payload }; }\n}\nmsg.payload = `${payload.ok === false ? 'ERROR' : 'OK'} | ${payload.state || 'UNKNOWN'} | ${payload.detail || ''}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 420,
+    "wires": [
+      [
+        "robot-ui-state"
+      ]
+    ]
+  },
+  {
+    "id": "robot-ui-distance-indicator",
+    "type": "ui_template",
+    "z": "robot-tab",
+    "group": "robot-ui-status-group",
+    "name": "Indicador de distancia",
+    "order": 3,
+    "width": 6,
+    "height": 3,
+    "format": "<style>\n.robot-distance { padding: 8px 0; font-size: 16px; }\n.robot-distance .reading { font-size: 24px; font-weight: 700; }\n.robot-distance .track { height: 22px; border-radius: 12px; background: #ddd; overflow: hidden; margin: 10px 0; }\n.robot-distance .fill { height: 100%; transition: width .25s ease, background-color .25s ease; }\n.robot-distance .danger { color: #b91c1c; }\n.robot-distance .caution { color: #92400e; }\n.robot-distance .safe { color: #166534; }\n.robot-distance .unavailable { color: #52525b; }\n</style>\n<div class=\"robot-distance\" ng-class=\"display.level\" aria-live=\"polite\">\n  <div class=\"reading\">{{display.distance === null ? '—' : (display.distance + ' cm')}}</div>\n  <div class=\"track\" role=\"progressbar\" aria-label=\"Distancia ultrasónica\" aria-valuemin=\"0\" aria-valuemax=\"200\" aria-valuenow=\"{{display.distance === null ? '' : display.distance}}\">\n    <div class=\"fill\" ng-style=\"{'width': (display.percent || 0) + '%', 'background-color': display.level === 'danger' ? '#dc2626' : display.level === 'caution' ? '#d97706' : display.level === 'safe' ? '#16a34a' : '#a1a1aa'}\"></div>\n  </div>\n  <strong>{{display.label}}</strong>\n</div>\n<script>\n(function(scope) {\n  scope.display = { distance: null, percent: 0, level: 'unavailable', label: 'Esperando telemetría' };\n  function update() {\n    var reading = scope.msg && scope.msg.payload;\n    var timestamp = reading && Date.parse(reading.receivedAt);\n    if (!reading || reading.level === 'unavailable') {\n      scope.display = { distance: null, percent: 0, level: 'unavailable', label: reading ? reading.label : 'Esperando telemetría' };\n    } else if (!Number.isFinite(timestamp) || Date.now() - timestamp > 5000 || timestamp > Date.now() + 5000) {\n      scope.display = { distance: null, percent: 0, level: 'unavailable', label: 'Telemetría desactualizada' };\n    } else {\n      scope.display = reading;\n    }\n  }\n  scope.$watch('msg', update);\n  var timer = setInterval(function() { scope.$applyAsync(update); }, 1000);\n  scope.$on('$destroy', function() { clearInterval(timer); });\n})(scope);\n</script>",
+    "storeOutMessages": true,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "className": "",
+    "x": 650,
+    "y": 650,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "dashboard-telemetry-format",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Format dashboard telemetry",
+    "func": "let payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { payload = null; }\n}\nconst value = payload && Number(payload.value);\nconst valid = payload && payload.valid === true && payload.unit === 'cm' &&\n    typeof payload.value === 'number' && Number.isFinite(value) && value >= 2 && value <= 200;\nconst text = valid ? `Distancia: ${value} cm` :\n    `Sensor no disponible: ${(payload && payload.reason) || 'medición inválida'}`;\nconst indicator = valid ? {\n    distance: value,\n    percent: value / 2,\n    level: value < 20 ? 'danger' : value <= 50 ? 'caution' : 'safe',\n    label: value < 20 ? 'Muy cerca' : value <= 50 ? 'Precaución' : 'Distancia segura',\n    receivedAt: payload.receivedAt || new Date().toISOString()\n} : { level: 'unavailable', label: 'Sensor no disponible' };\nreturn [{ ...msg, payload: text }, { ...msg, payload: indicator }];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 500,
+    "wires": [
+      [
+        "robot-ui-telemetry"
+      ],
+      [
+        "robot-ui-distance-indicator"
+      ]
+    ]
+  },
+  {
+    "id": "robot-ui-rectangle",
+    "type": "ui_button",
+    "z": "robot-tab",
+    "name": "RECTANGLE",
+    "group": "robot-ui-control-group",
+    "order": 7,
+    "width": 6,
+    "height": 1,
+    "passthru": false,
+    "label": "Iniciar rutina rectangular",
+    "tooltip": "Ejecutar trayectoria rectangular",
+    "color": "",
+    "bgcolor": "#16a34a",
+    "className": "",
+    "icon": "",
+    "payload": "RECTANGLE",
+    "payloadType": "str",
+    "topic": "command",
+    "topicType": "str",
+    "x": 150,
+    "y": 800,
+    "wires": [
+      [
+        "dashboard-build-command"
+      ]
+    ]
+  }
+]

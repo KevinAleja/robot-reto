@@ -1,0 +1,21 @@
+# Local agent state
+.atl/
+.pi/
+
+# Credentials
+firmware/esp32_robot_mqtt/secrets.h
+
+# Node-RED runtime data (only the flows are versioned)
+nodered/data/*
+!nodered/data/flows.json
+
+# Mosquitto runtime data
+mosquitto/data/
+mosquitto/log/
+
+# Vendor drivers and course deliverables
+drivers/
+act1_robot.zip
+
+# Stray file from a redirect to NUL
+NUL
