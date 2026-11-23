@@ -19,3 +19,28 @@ act1_robot.zip
 
 # Stray file from a redirect to NUL
 NUL
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Python virtual environments
+.venv/
+
+# Photos and schematics (kept locally, not versioned)
+fotos/
+
+# Sensitive files: credentials, keys, environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+credentials*.json
+secrets.h
+
+# Large binaries: model weights and datasets
+*.pt
+*.onnx
