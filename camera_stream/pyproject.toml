@@ -1,0 +1,13 @@
+[project]
+name = "camera-stream"
+version = "0.1.0"
+description = "Laptop-side MJPEG re-streamer for the robot ESP32-CAM"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy==2.5.4",
+    "opencv-python==5.0.0.93",
+    "paho-mqtt==2.2.0",
+]
+
+[tool.uv]
+package = false
