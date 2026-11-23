@@ -1,0 +1,5 @@
+.venv/
+weights/
+data/
+runs/
+results/
