@@ -2,9 +2,9 @@
   {
     "id": "robot-tab",
     "type": "tab",
-    "label": "Robot MQTT Control",
+    "label": "Robot HUD",
     "disabled": false,
-    "info": "GUI web simple para controlar un robot ESP32 mediante MQTT."
+    "info": "HUD de monitoreo del robot ESP32 vía MQTT: dashboard en /ui y página propia en /robot (estado JSON en /robot/status). El robot se maneja con el control remoto físico; ninguna de las dos interfaces envía comandos de movimiento."
   },
   {
     "id": "mqtt-broker-local",
@@ -38,7 +38,7 @@
     "upload": false,
     "swaggerDoc": "",
     "x": 130,
-    "y": 80,
+    "y": 40,
     "wires": [
       [
         "robot-html-template"
@@ -49,15 +49,15 @@
     "id": "robot-html-template",
     "type": "template",
     "z": "robot-tab",
-    "name": "Robot GUI HTML",
+    "name": "Robot HUD HTML",
     "field": "payload",
     "fieldType": "msg",
     "format": "handlebars",
-    "syntax": "mustache",
-    "template": "<!doctype html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Robot MQTT</title>\n  <style>\n    body { font-family: system-ui, sans-serif; background: #111827; color: #f9fafb; margin: 0; padding: 24px; }\n    main { max-width: 720px; margin: auto; }\n    .card { background: #1f2937; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 10px 30px #0004; }\n    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }\n    button { border: 0; border-radius: 12px; padding: 18px; font-size: 18px; font-weight: 700; cursor: pointer; background: #2563eb; color: white; }\n    button:hover { filter: brightness(1.1); }\n    .stop { background: #dc2626; }\n    .auto { background: #16a34a; }\n    .muted { color: #9ca3af; }\n    input { width: 100%; }\n    pre { background: #030712; padding: 12px; border-radius: 12px; overflow-x: auto; }\n  </style>\n</head>\n<body>\n<main>\n  <h1>Robot MQTT</h1>\n  <p class=\"muted\">Node-RED → Mosquitto → ESP32 → L298N → motores</p>\n\n  <section class=\"card\">\n    <label for=\"speed\">Velocidad PWM: <strong id=\"speedValue\">180</strong></label>\n    <input id=\"speed\" type=\"range\" min=\"0\" max=\"255\" value=\"180\">\n  </section>\n\n  <section class=\"card grid\">\n    <span></span>\n    <button onclick=\"sendCommand('FORWARD')\">▲ FORWARD</button>\n    <span></span>\n    <button onclick=\"sendCommand('CCW')\">↺ CCW</button>\n    <button class=\"stop\" onclick=\"sendCommand('STOP')\">■ STOP</button>\n    <button onclick=\"sendCommand('CW')\">↻ CW</button>\n    <span></span>\n    <button onclick=\"sendCommand('BACKWARD')\">▼ BACKWARD</button>\n    <span></span>\n  </section>\n\n  <section class=\"card\">\n    <button class=\"auto\" onclick=\"sendCommand('RECTANGLE')\">Iniciar rutina rectangular</button>\n  </section>\n\n  <section class=\"card\">\n    <h2>Respuesta del robot</h2>\n    <pre id=\"response\">Esperando respuesta...</pre>\n  </section>\n\n  <section class=\"card\">\n    <h2>Distancia ultrasónica</h2>\n    <p id=\"distance\">Esperando telemetría...</p>\n    <pre id=\"telemetry\"></pre>\n  </section>\n</main>\n<script>\nconst speed = document.getElementById('speed');\nconst speedValue = document.getElementById('speedValue');\nspeed.addEventListener('input', () => speedValue.textContent = speed.value);\n\nasync function sendCommand(command) {\n  const response = await fetch('/api/cmd', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ command, speed: Number(speed.value) })\n  });\n  const data = await response.json();\n  document.getElementById('response').textContent = JSON.stringify(data, null, 2);\n}\n\nasync function refreshStatus() {\n  try {\n    const response = await fetch('/api/status');\n    const data = await response.json();\n    document.getElementById('response').textContent = JSON.stringify(data.response, null, 2);\n    const telemetry = data.telemetry;\n    document.getElementById('telemetry').textContent = JSON.stringify(telemetry, null, 2);\n    document.getElementById('distance').textContent = telemetry && telemetry.valid\n      ? `${telemetry.value} ${telemetry.unit || 'cm'}`\n      : `Sensor no disponible: ${(telemetry && telemetry.reason) || 'sin medición'}`;\n  } catch (err) {\n    document.getElementById('response').textContent = err.message;\n  }\n}\n\nsetInterval(refreshStatus, 1000);\nrefreshStatus();\n</script>\n</body>\n</html>",
+    "syntax": "plain",
+    "template": "<!doctype html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Robot HUD</title>\n  <style>\n    :root {\n      --bg: #0b0f17; --surface: #131a26; --surface-2: #1a2333; --border: #243045;\n      --text: #e6edf7; --muted: #8b98ad; --accent: #3b82f6; --accent-press: #2563eb;\n      --danger: #ef4444; --warn: #f59e0b; --ok: #22c55e; --idle: #64748b;\n      --radius: 14px; --shadow: 0 8px 24px rgba(0, 0, 0, .35);\n    }\n    @media (prefers-color-scheme: light) {\n      :root {\n        --bg: #f3f5f9; --surface: #ffffff; --surface-2: #eef2f7; --border: #dbe2ec;\n        --text: #0f172a; --muted: #5b6b82; --shadow: 0 6px 18px rgba(15, 23, 42, .08);\n      }\n    }\n    * { box-sizing: border-box; }\n    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\n    header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;\n      padding: 14px 20px; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }\n    h1 { margin: 0; font-size: 18px; letter-spacing: .2px; }\n    h1 small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }\n    h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }\n    .pills { display: flex; flex-wrap: wrap; gap: 8px; }\n    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); }\n    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }\n    .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }\n    .dot.warn { background: var(--warn); }\n    .dot.err { background: var(--danger); }\n    main { display: grid; gap: 16px; padding: 20px; max-width: 1200px; margin: 0 auto; grid-template-columns: minmax(0, 1fr); }\n    @media (min-width: 900px) { main { grid-template-columns: 380px minmax(0, 1fr); } .col-right { grid-row: span 3; } }\n    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }\n    .col { display: grid; gap: 16px; align-content: start; }\n\n    /* Alert banner */\n    .alert { grid-column: 1 / -1; padding: 12px 18px; border-radius: var(--radius); font-weight: 800; letter-spacing: .06em; text-align: center;\n      color: #fff; background: var(--idle); box-shadow: var(--shadow); }\n    .alert.safe { background: var(--ok); color: #052e16; }\n    .alert.danger { background: var(--danger); animation: blink 1s step-start infinite; }\n    @keyframes blink { 50% { opacity: .6; } }\n\n    /* Speed */\n    .speed-head { display: flex; justify-content: space-between; align-items: baseline; }\n    .speed-value { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }\n    .speed-value span { font-size: 13px; color: var(--muted); font-weight: 400; }\n    .age { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }\n    .age.stale { color: var(--warn); font-weight: 700; }\n\n    /* D-pad (read-only indicator) */\n    .remote { display: flex; gap: 16px; align-items: center; justify-content: center; flex-wrap: wrap; }\n    .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; max-width: 240px; }\n    .dpad .key { aspect-ratio: 1; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-2); color: var(--text);\n      font-size: 26px; display: grid; place-items: center; transition: background .15s, border-color .15s, color .15s; user-select: none; }\n    .dpad .key small { display: block; font-size: 10px; letter-spacing: .06em; color: var(--muted); margin-top: 2px; }\n    .dpad .key.active { background: var(--accent); border-color: var(--accent); color: #fff; }\n    .dpad .key.active small { color: #dbeafe; }\n    .dpad .stop.active { background: var(--danger); border-color: transparent; }\n    .dpad .stop.active small { color: #fee2e2; }\n    .joy { position: relative; width: 110px; height: 110px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface-2); }\n    .joy::before, .joy::after { content: \"\"; position: absolute; background: var(--border); }\n    .joy::before { left: 50%; top: 8px; bottom: 8px; width: 1px; }\n    .joy::after { top: 50%; left: 8px; right: 8px; height: 1px; }\n    .joy .knob { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: var(--accent); z-index: 1; transition: left .15s, top .15s; }\n    .joy .knob.idle { background: var(--idle); }\n    .joy.cam .knob { background: var(--warn); }\n    .joy.cam .knob.idle { background: var(--idle); }\n    .joy.flash { border-color: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 35%, transparent); }\n    .joys { display: flex; gap: 14px; }\n    .joy-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }\n    .center-flash { visibility: hidden; padding: 1px 8px; border-radius: 999px; background: var(--ok); color: #052e16; font-weight: 700; font-size: 11px; }\n    .center-flash.show { visibility: visible; }\n    .direction { text-align: center; font-size: 17px; font-weight: 700; margin: 12px 0 0; }\n    .motors { display: grid; gap: 6px; margin-top: 12px; }\n    .motor-row { display: grid; grid-template-columns: 70px 1fr 44px; gap: 8px; align-items: center; font-size: 13px; }\n    .motor-row b { text-align: right; font-variant-numeric: tabular-nums; }\n    .cbar { position: relative; height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }\n    .cbar::after { content: \"\"; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border); }\n    .cbar > div { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; background: var(--accent); transition: left .15s, width .15s; }\n    .cbar > div.rev { background: var(--warn); }\n    .routine-badge { display: none; margin: 14px auto 0; width: fit-content; padding: 6px 14px; border-radius: 999px; background: var(--ok); color: #052e16; font-weight: 700; font-size: 13px; }\n    .routine-badge.show { display: block; }\n    .latched { color: var(--danger); }\n    .hint { text-align: center; color: var(--muted); font-size: 12px; margin: 12px 0 0; }\n\n    /* Distance and gas */\n    .distance-value { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }\n    .distance-value span { font-size: 16px; color: var(--muted); font-weight: 400; }\n    .bar { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 10px 0 8px; }\n    .bar > div { height: 100%; width: 0; background: var(--idle); transition: width .3s ease, background .3s ease; }\n    .status-text { font-weight: 600; }\n    .lvl-danger { color: var(--danger); } .lvl-caution { color: var(--warn); } .lvl-safe { color: var(--ok); } .lvl-unavailable { color: var(--muted); }\n\n    /* Camera */\n    .video { position: relative; aspect-ratio: 4 / 3; background: #000; border-radius: 10px; overflow: hidden; cursor: pointer; }\n    .video img { width: 100%; height: 100%; object-fit: contain; display: block; }\n    .video .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; color: #cbd5e1; font-size: 14px; background: rgba(0,0,0,.55); }\n    .video .badge { position: absolute; top: 10px; left: 10px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; background: rgba(15,23,42,.8); color: #e2e8f0; }\n    .video .badge.online { background: var(--ok); color: #052e16; }\n    .video .badge.offline { background: var(--danger); color: #fff; }\n    .cam-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-top: 12px; }\n    .cam-controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }\n    .cam-controls select { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; }\n    .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }\n    .segmented button { padding: 6px 12px; border: 0; background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }\n    .segmented button + button { border-left: 1px solid var(--border); }\n    .segmented button.on { background: var(--accent); color: #fff; }\n    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 12px; }\n    .metric { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }\n    .metric b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }\n    .metric span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }\n\n    /* Response + log */\n    .resp-state { font-size: 20px; font-weight: 700; }\n    .resp-detail { color: var(--muted); margin: 2px 0 8px; }\n    details summary { cursor: pointer; color: var(--muted); font-size: 12px; }\n    pre { background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 10px; overflow-x: auto; font-size: 12px; margin: 8px 0 0; }\n    .log { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; font-size: 13px; }\n    .log li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }\n    .log li:last-child { border-bottom: 0; }\n    .log time { color: var(--muted); font-variant-numeric: tabular-nums; }\n    .empty { color: var(--muted); font-size: 13px; }\n  </style>\n</head>\n<body>\n<header>\n  <h1>Robot MQTT<small>Control remoto → MQTT → ESP32 → L298N</small></h1>\n  <div class=\"pills\">\n    <span class=\"pill\"><i class=\"dot\" id=\"pill-api\"></i>Node-RED</span>\n    <span class=\"pill\"><i class=\"dot\" id=\"pill-remote\"></i>Control</span>\n    <span class=\"pill\"><i class=\"dot\" id=\"pill-robot\"></i>Robot</span>\n    <span class=\"pill\"><i class=\"dot\" id=\"pill-sensor\"></i>Sensor</span>\n    <span class=\"pill\"><i class=\"dot\" id=\"pill-vision\"></i>Cámara</span>\n  </div>\n</header>\n\n<main>\n  <div class=\"alert\" id=\"alert\" role=\"status\" aria-live=\"assertive\">ESPERANDO DATOS</div>\n\n  <div class=\"col\">\n    <section class=\"card\">\n      <div class=\"speed-head\">\n        <h2>Velocidad PWM</h2>\n        <div class=\"speed-value\" id=\"speedValue\">— <span>/ 255</span></div>\n      </div>\n      <div class=\"bar\" role=\"progressbar\" aria-label=\"Velocidad PWM\" aria-valuemin=\"0\" aria-valuemax=\"255\"><div id=\"speedBar\"></div></div>\n      <div class=\"age\" id=\"cmdAge\">Esperando control remoto</div>\n    </section>\n\n    <section class=\"card\">\n      <h2>Control remoto</h2>\n      <div class=\"remote\">\n        <div class=\"dpad\" aria-label=\"Dirección actual\">\n          <span></span>\n          <div class=\"key\" data-cmd=\"FORWARD\" aria-label=\"Avanzar\">▲<small>FORWARD</small></div>\n          <span></span>\n          <div class=\"key\" data-cmd=\"CCW\" aria-label=\"Girar antihorario\">↺<small>CCW</small></div>\n          <div class=\"key stop\" data-cmd=\"STOP\" aria-label=\"Detenido\">■<small>STOP</small></div>\n          <div class=\"key\" data-cmd=\"CW\" aria-label=\"Girar horario\">↻<small>CW</small></div>\n          <span></span>\n          <div class=\"key\" data-cmd=\"BACKWARD\" aria-label=\"Retroceder\">▼<small>BACKWARD</small></div>\n          <span></span>\n        </div>\n        <div class=\"joys\">\n          <div class=\"joy-wrap\" id=\"joyWrap\" hidden>\n            <div class=\"joy\" aria-label=\"Posición del joystick de manejo\"><div class=\"knob\" id=\"joyKnob\"></div></div>\n            <span>Manejo</span>\n          </div>\n          <div class=\"joy-wrap\">\n            <div class=\"joy cam\" id=\"camJoy\" aria-label=\"Joystick de la cámara (pan/tilt)\"><div class=\"knob idle\" id=\"camKnob\"></div></div>\n            <span>Cámara</span>\n            <span class=\"center-flash\" id=\"centerFlash\">Centrar</span>\n          </div>\n        </div>\n      </div>\n      <div class=\"direction\" id=\"directionLabel\">Sin comandos</div>\n      <div class=\"motors\" id=\"motors\" hidden>\n        <div class=\"motor-row\"><span>Motor izq.</span><div class=\"cbar\"><div id=\"leftBar\"></div></div><b id=\"leftValue\">0</b></div>\n        <div class=\"motor-row\"><span>Motor der.</span><div class=\"cbar\"><div id=\"rightBar\"></div></div><b id=\"rightValue\">0</b></div>\n      </div>\n      <div class=\"routine-badge\" id=\"routineBadge\">Patrulla</div>\n      <div class=\"metrics\">\n        <div class=\"metric\"><span>Control</span><b id=\"mRemote\">—</b></div>\n        <div class=\"metric\"><span>Batería</span><b id=\"mBattery\">—</b></div>\n        <div class=\"metric\"><span>RSSI</span><b id=\"mRssi\">—</b></div>\n        <div class=\"metric\"><span>Vel. control</span><b id=\"mRemoteSpeed\">—</b></div>\n        <div class=\"metric\"><span>STOP</span><b id=\"mLatched\">—</b></div>\n      </div>\n      <p class=\"hint\">Controlado por el control remoto</p>\n    </section>\n\n    <section class=\"card\">\n      <h2>Distancia ultrasónica</h2>\n      <div class=\"distance-value\" id=\"distValue\">— <span>cm</span></div>\n      <div class=\"bar\" role=\"progressbar\" aria-label=\"Distancia\" aria-valuemin=\"0\" aria-valuemax=\"200\"><div id=\"distBar\"></div></div>\n      <div class=\"status-text lvl-unavailable\" id=\"distLabel\">Esperando telemetría</div>\n    </section>\n\n    <section class=\"card\">\n      <h2>Gas</h2>\n      <div class=\"distance-value\" id=\"gasValue\">— <span id=\"gasUnit\">ppm</span></div>\n      <div class=\"bar\" role=\"progressbar\" aria-label=\"Gas\" aria-valuemin=\"0\" aria-valuemax=\"1000\"><div id=\"gasBar\"></div></div>\n      <div class=\"status-text lvl-unavailable\" id=\"gasLabel\">Sin datos</div>\n    </section>\n  </div>\n\n  <div class=\"col col-right\">\n    <section class=\"card\">\n      <h2>Cámara</h2>\n      <div class=\"video\" id=\"video\" title=\"Toca para reconectar\">\n        <img id=\"videoImg\" alt=\"Video de la cámara del robot\">\n        <span class=\"badge\" id=\"visionBadge\">Sin datos</span>\n        <div class=\"overlay\" id=\"videoOverlay\">Conectando al servidor de cámara…</div>\n      </div>\n      <div class=\"cam-controls\">\n        <label>Filtro\n          <select id=\"filterSelect\" aria-label=\"Filtro de imagen\">\n            <option value=\"none\">Original</option>\n            <option value=\"canny\">Canny</option>\n            <option value=\"blackhat\">Black-hat</option>\n            <option value=\"sobel\">Sobel</option>\n            <option value=\"laplacian\">Laplaciano</option>\n          </select>\n        </label>\n        <div class=\"segmented\" role=\"group\" aria-label=\"Vista\">\n          <button type=\"button\" data-view=\"raw\">Original</button>\n          <button type=\"button\" data-view=\"filtered\">Filtrada</button>\n        </div>\n      </div>\n      <div class=\"metrics\">\n        <div class=\"metric\"><span>Servidor</span><b id=\"mServer\">—</b></div>\n        <div class=\"metric\"><span>Cámara</span><b id=\"mCamera\">—</b></div>\n        <div class=\"metric\"><span>FPS</span><b id=\"mFps\">—</b></div>\n        <div class=\"metric\"><span>Filtro activo</span><b id=\"mFilter\">—</b></div>\n        <div class=\"metric\"><span>Filtro ms</span><b id=\"mFilterMs\">—</b></div>\n      </div>\n    </section>\n\n    <section class=\"card\">\n      <h2>Respuesta del robot</h2>\n      <div class=\"resp-state lvl-unavailable\" id=\"respState\">UNKNOWN</div>\n      <div class=\"resp-detail\" id=\"respDetail\">Sin respuesta MQTT todavía</div>\n      <div class=\"metrics\">\n        <div class=\"metric\"><span>Motor A</span><b id=\"mMotorA\">—</b></div>\n        <div class=\"metric\"><span>Motor B</span><b id=\"mMotorB\">—</b></div>\n        <div class=\"metric\"><span>Rutina</span><b id=\"mRoutine\">—</b></div>\n      </div>\n      <details><summary>JSON crudo</summary><pre id=\"respRaw\">{}</pre></details>\n    </section>\n\n    <section class=\"card\">\n      <h2>Historial de órdenes</h2>\n      <ul class=\"log\" id=\"log\"><li class=\"empty\">Aún no llegan órdenes del control remoto</li></ul>\n    </section>\n  </div>\n</main>\n\n<script>\n(function () {\n  'use strict';\n  var STALE_MS = 5000;\n  // The remote publishes equipo1/robot/command at 10 Hz; the robot dead-man stops after ~500 ms of silence.\n  var COMMAND_STALE_MS = 1000;\n  // equipo1/robot/remote/status arrives every 2 s; older than this means the remote went silent.\n  var REMOTE_STALE_MS = 6000;\n  // equipo1/robot/camera only arrives while the camera joystick moves; a lost final zero expires after this.\n  var CAMERA_STALE_MS = 1000;\n  // How long the \"Centrar\" event stays highlighted (the page polls every 1 s).\n  var CENTER_FLASH_MS = 2000;\n  var DIRECTION_LABELS = { FORWARD: 'Adelante', BACKWARD: 'Atrás', CW: 'Giro horario', CCW: 'Giro antihorario', STOP: 'Paro (STOP)', IDLE: 'Detenido' };\n  var ROUTINE_LABELS = { PATROL: 'Patrulla', RECTANGLE: 'Rutina rectangular en curso' };\n  // Alert thresholds come from the Node-RED \"Evaluate alerts\" function via /robot/status.\n  var thresholds = { obstacleCm: 30, gasAlertPpm: 400 };\n  var params = new URLSearchParams(location.search);\n  var cameraBase = (params.get('cam') || ('http://' + (location.hostname || 'localhost') + ':8000')).replace(/\\/+$/, '');\n  var view = params.get('view') === 'filtered' ? 'filtered' : 'raw';\n  var FILTER_LABELS = { none: 'Original', canny: 'Canny', blackhat: 'Black-hat', sobel: 'Sobel', laplacian: 'Laplaciano' };\n  var filterPendingUntil = 0;\n\n  var $ = function (id) { return document.getElementById(id); };\n  var latest = null, polledAt = 0;\n\n  function toMs(v) { return typeof v === 'number' ? v : Date.parse(v); }\n  function ageMs(at) {\n    var t = toMs(at);\n    if (!latest || !Number.isFinite(t)) return Infinity;\n    // Server clock plus local elapsed time since the poll: immune to phone/laptop clock skew.\n    return Math.max(0, latest.serverTime + (Date.now() - polledAt) - t);\n  }\n  function setDot(id, state) { $(id).className = 'dot' + (state ? ' ' + state : ''); }\n  function num(v) { return typeof v === 'number' && Number.isFinite(v); }\n\n  var logItems = [], lastLogged = null, lastCenterAt = null;\n  function commandText(c) {\n    var text = DIRECTION_LABELS[c.direction] || c.direction;\n    if (c.routine) text = ROUTINE_LABELS[c.routine] + ' · ' + text;\n    return text + (num(c.speed) ? ' · ' + c.speed : '');\n  }\n  function addLog(text) {\n    logItems.unshift({ text: text, at: new Date() });\n    logItems = logItems.slice(0, 20);\n    var ul = $('log');\n    ul.textContent = '';\n    logItems.forEach(function (it) {\n      var li = document.createElement('li');\n      var left = document.createElement('span');\n      left.textContent = it.text;\n      var time = document.createElement('time');\n      time.textContent = it.at.toLocaleTimeString();\n      li.append(left, time);\n      ul.appendChild(li);\n    });\n  }\n\n  // Centered bar for a -255..255 motor command: grows right (forward) or left (reverse) from the middle.\n  function renderMotorBar(barId, valueId, v) {\n    var half = Math.min(255, Math.abs(v)) / 255 * 50;\n    var bar = $(barId);\n    bar.style.left = (v >= 0 ? 50 : 50 - half) + '%';\n    bar.style.width = half + '%';\n    bar.className = v < 0 ? 'rev' : '';\n    $(valueId).textContent = v;\n  }\n\n  function renderCommand(c) {\n    document.querySelectorAll('.dpad .key').forEach(function (k) {\n      k.classList.toggle('active', !!c && k.dataset.cmd === c.direction);\n    });\n    var badge = $('routineBadge');\n    badge.classList.toggle('show', !!c && !!c.routine);\n    if (c && c.routine) badge.textContent = ROUTINE_LABELS[c.routine] || c.routine;\n    $('directionLabel').textContent = c ? (DIRECTION_LABELS[c.direction] || c.direction) : 'Sin comandos';\n    var speed = c && num(c.speed) ? c.speed : null;\n    $('speedValue').firstChild.nodeValue = (speed === null ? '—' : speed) + ' ';\n    var bar = $('speedBar');\n    bar.style.width = speed === null ? '0' : (speed / 2.55) + '%';\n    bar.style.background = 'var(--accent)';\n    $('motors').hidden = !(c && c.hasMotors);\n    if (c && c.hasMotors) {\n      renderMotorBar('leftBar', 'leftValue', c.left);\n      renderMotorBar('rightBar', 'rightValue', c.right);\n    }\n    $('joyWrap').hidden = !(c && c.hasJoystick);\n    if (c && c.hasJoystick) {\n      $('joyKnob').style.left = (50 + c.x / 2) + '%';\n      $('joyKnob').style.top = (50 - c.y / 2) + '%';\n    }\n    if (c) {\n      var text = commandText(c);\n      if (text !== lastLogged) addLog(text);\n      lastLogged = text;\n    }\n    renderCommandAge();\n  }\n\n  function renderCommandAge() {\n    var c = latest && latest.command;\n    var el = $('cmdAge');\n    if (!c) { el.textContent = 'Esperando control remoto'; el.className = 'age'; }\n    else {\n      var age = ageMs(c.receivedAt);\n      el.textContent = 'Última orden hace ' + (age / 1000).toFixed(1) + ' s';\n      el.className = 'age' + (age > COMMAND_STALE_MS ? ' stale' : '');\n    }\n    renderRemotePill();\n  }\n\n  // Header pill: remote status (heartbeat/LWT) when known, otherwise command freshness.\n  function renderRemotePill() {\n    var c = latest && latest.command, r = latest && latest.remote;\n    var cmdFresh = c && ageMs(c.receivedAt) <= COMMAND_STALE_MS;\n    if (r && r.state === 'offline') { setDot('pill-remote', 'err'); return; }\n    if (r && ageMs(r.receivedAt) > REMOTE_STALE_MS) { setDot('pill-remote', 'warn'); return; }\n    if (!c) { setDot('pill-remote', r ? 'ok' : ''); return; }\n    setDot('pill-remote', cmdFresh ? 'ok' : 'warn');\n  }\n\n  function renderRemote(r) {\n    var fresh = r && ageMs(r.receivedAt) <= REMOTE_STALE_MS;\n    var online = r && r.state === 'online';\n    $('mRemote').textContent = !r ? 'Sin datos' : !online ? 'Desconectado' : fresh ? 'En línea' : 'Sin latido';\n    $('mBattery').textContent = online && num(r.battery) ? r.battery.toFixed(2) + ' V' : '—';\n    $('mRssi').textContent = online && num(r.rssi) ? r.rssi + ' dBm' : '—';\n    $('mRemoteSpeed').textContent = online && num(r.speed) ? r.speed : '—';\n    var latched = $('mLatched');\n    latched.textContent = online ? (r.stopLatched ? 'Activo' : 'No') : '—';\n    latched.className = online && r.stopLatched ? 'latched' : '';\n  }\n\n  function renderCamera(cam) {\n    var knob = $('camKnob');\n    var moving = cam && num(cam.movedAt) && ageMs(cam.movedAt) <= CAMERA_STALE_MS && (cam.pan !== 0 || cam.tilt !== 0);\n    knob.style.left = (moving ? 50 + cam.pan / 255 * 50 : 50) + '%';\n    knob.style.top = (moving ? 50 - cam.tilt / 255 * 50 : 50) + '%';\n    knob.className = 'knob' + (moving ? '' : ' idle');\n    var flash = !!(cam && num(cam.centerAt) && ageMs(cam.centerAt) <= CENTER_FLASH_MS);\n    $('camJoy').classList.toggle('flash', flash);\n    $('centerFlash').classList.toggle('show', flash);\n    if (cam && num(cam.centerAt) && cam.centerAt !== lastCenterAt) {\n      if (lastCenterAt !== null || flash) addLog('Cámara: centrar');\n      lastCenterAt = cam.centerAt;\n    }\n  }\n\n  function renderResponse(r) {\n    var known = r && r.receivedAt;\n    var fresh = known && ageMs(r.receivedAt) < STALE_MS * 6;\n    var stateEl = $('respState');\n    stateEl.textContent = (r && r.state) || 'UNKNOWN';\n    stateEl.className = 'resp-state ' + (!known ? 'lvl-unavailable' : r.ok === false ? 'lvl-danger' : 'lvl-safe');\n    $('respDetail').textContent = known ? (r.detail || '') : 'Sin respuesta MQTT todavía';\n    $('mMotorA').textContent = known && num(r.motorASpeed) ? r.motorASpeed : '—';\n    $('mMotorB').textContent = known && num(r.motorBSpeed) ? r.motorBSpeed : '—';\n    $('mRoutine').textContent = known ? (r.routineActive ? 'Activa' : 'No') : '—';\n    $('respRaw').textContent = JSON.stringify(r || {}, null, 2);\n    setDot('pill-robot', !known ? '' : fresh ? 'ok' : 'warn');\n  }\n\n  function renderReading(t, ids, opts) {\n    var stale = !t || ageMs(t.at) > STALE_MS;\n    var valid = t && t.valid && num(t.value);\n    var level, label;\n    if (!t) { level = 'unavailable'; label = opts.empty; }\n    else if (stale) { level = 'unavailable'; label = 'Telemetría desactualizada'; }\n    else if (!valid) { level = 'unavailable'; label = opts.invalid; }\n    else { var l = opts.classify(t.value); level = l[0]; label = l[1]; }\n    var show = valid && !stale;\n    $(ids.value).firstChild.nodeValue = (show ? t.value.toFixed(opts.digits) : '—') + ' ';\n    var bar = $(ids.bar);\n    bar.style.width = show ? Math.min(100, t.value / opts.max * 100) + '%' : '0';\n    bar.style.background = 'var(--' + ({ danger: 'danger', caution: 'warn', safe: 'ok' }[level] || 'idle') + ')';\n    var lbl = $(ids.label);\n    lbl.textContent = label;\n    lbl.className = 'status-text lvl-' + level;\n    return { present: !!t, show: show, level: level };\n  }\n\n  function renderSensors(d, g) {\n    var obstacle = thresholds.obstacleCm, gasThreshold = thresholds.gasAlertPpm;\n    var dist = renderReading(d, { value: 'distValue', bar: 'distBar', label: 'distLabel' }, {\n      empty: 'Esperando telemetría', invalid: 'Fuera de rango', digits: 1, max: 200,\n      classify: function (v) { return v < obstacle ? ['danger', 'Obstáculo cerca'] : v <= obstacle * 2 ? ['caution', 'Precaución'] : ['safe', 'Distancia segura']; }\n    });\n    if (g && g.unit) $('gasUnit').textContent = g.unit;\n    renderReading(g, { value: 'gasValue', bar: 'gasBar', label: 'gasLabel' }, {\n      empty: 'Sin datos', invalid: 'Lectura inválida', digits: 0, max: 1000,\n      classify: function (v) { return v >= gasThreshold ? ['danger', 'Nivel de gas alto'] : v >= gasThreshold / 2 ? ['caution', 'Gas moderado'] : ['safe', 'Normal']; }\n    });\n    setDot('pill-sensor', !dist.present ? '' : dist.show ? (dist.level === 'danger' ? 'err' : 'ok') : 'warn');\n  }\n\n  function renderAlert(a) {\n    var el = $('alert');\n    el.textContent = (a && a.text) || 'ESPERANDO DATOS';\n    el.className = 'alert' + (a && a.level ? ' ' + a.level : '');\n  }\n\n  function renderVision(v) {\n    var badge = $('visionBadge');\n    var online = v && v.state === 'online';\n    if (!v) { badge.textContent = 'Sin datos del servidor'; badge.className = 'badge'; }\n    else if (!online) { badge.textContent = 'Servidor desconectado'; badge.className = 'badge offline'; }\n    else if (v.connected === false) { badge.textContent = 'Cámara sin señal'; badge.className = 'badge offline'; }\n    else { badge.textContent = 'En línea'; badge.className = 'badge online'; }\n    $('mServer').textContent = !v ? '—' : online ? 'En línea' : 'Desconectado';\n    $('mCamera').textContent = online ? (v.connected === false ? 'Sin señal' : 'Conectada') : '—';\n    $('mFps').textContent = online && num(v.fps) ? v.fps.toFixed(0) : '—';\n    $('mFilter').textContent = online && v.filter ? (FILTER_LABELS[v.filter] || v.filter) : '—';\n    $('mFilterMs').textContent = online && num(v.filterMs) ? v.filterMs.toFixed(0) : '—';\n    // Follow the server's active filter unless the user just picked one.\n    if (online && v.filter && Date.now() > filterPendingUntil) $('filterSelect').value = v.filter;\n    setDot('pill-vision', !v ? '' : !online ? 'err' : v.connected === false ? 'warn' : 'ok');\n  }\n\n  async function refreshStatus() {\n    try {\n      var res = await fetch('/robot/status', { cache: 'no-store' });\n      if (!res.ok) throw new Error('HTTP ' + res.status);\n      latest = await res.json();\n      polledAt = Date.now();\n      setDot('pill-api', 'ok');\n      renderCommand(latest.command);\n      renderRemote(latest.remote);\n      renderCamera(latest.camera);\n      renderResponse(latest.response);\n      if (latest.alert && latest.alert.thresholds) thresholds = latest.alert.thresholds;\n      renderSensors(latest.distance, latest.gas);\n      renderAlert(latest.alert && latest.alert.banner);\n      renderVision(latest.vision);\n    } catch (err) {\n      setDot('pill-api', 'err');\n    }\n  }\n\n  // Camera stream with automatic reconnection\n  var img = $('videoImg'), overlay = $('videoOverlay'), retry;\n  function showOverlay(text) { overlay.textContent = text; overlay.style.display = text ? 'flex' : 'none'; }\n  function connectVideo() {\n    clearTimeout(retry);\n    showOverlay('Conectando a ' + cameraBase + '…');\n    img.src = cameraBase + '/' + view + '.mjpg?t=' + Date.now();\n  }\n  function setView(next) {\n    view = next;\n    document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('on', b.dataset.view === view); });\n    connectVideo();\n  }\n  document.querySelectorAll('[data-view]').forEach(function (b) {\n    b.addEventListener('click', function () { setView(b.dataset.view); });\n  });\n\n  // Filter selection: Node-RED publishes it, retained, on equipo1/robot/vision/filter (and nothing else).\n  $('filterSelect').addEventListener('change', async function (e) {\n    var filter = e.target.value;\n    filterPendingUntil = Date.now() + 4000;\n    try {\n      var res = await fetch('/robot/vision/filter', {\n        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filter: filter })\n      });\n      if (!res.ok) throw new Error('HTTP ' + res.status);\n      if (filter !== 'none' && view === 'raw') setView('filtered');\n    } catch (err) {\n      filterPendingUntil = 0;\n      $('mFilter').textContent = 'Error: ' + err.message;\n    }\n  });\n  img.addEventListener('load', function () { showOverlay(''); });\n  img.addEventListener('error', function () {\n    img.removeAttribute('src');\n    showOverlay('Sin video en ' + cameraBase + '. Reintentando… (toca para reconectar)');\n    retry = setTimeout(connectVideo, 3000);\n  });\n  setInterval(function () { if (img.getAttribute('src') && img.naturalWidth > 0) showOverlay(''); }, 500);\n  $('video').addEventListener('click', connectVideo);\n\n  setView(view);\n  refreshStatus();\n  setInterval(refreshStatus, 1000);\n  setInterval(renderCommandAge, 250);\n})();\n</script>\n</body>\n</html>\n",
     "output": "str",
     "x": 360,
-    "y": 80,
+    "y": 40,
     "wires": [
       [
         "http-response"
@@ -72,88 +72,20 @@
     "statusCode": "",
     "headers": {},
     "x": 610,
-    "y": 80,
-    "wires": []
-  },
-  {
-    "id": "http-post-cmd",
-    "type": "http in",
-    "z": "robot-tab",
-    "name": "POST /api/cmd",
-    "url": "/api/cmd",
-    "method": "post",
-    "upload": false,
-    "swaggerDoc": "",
-    "x": 130,
-    "y": 180,
-    "wires": [
-      [
-        "build-command"
-      ]
-    ]
-  },
-  {
-    "id": "build-command",
-    "type": "function",
-    "z": "robot-tab",
-    "name": "Validate and publish command",
-    "func": "const allowed = ['FORWARD', 'BACKWARD', 'CW', 'CCW', 'STOP', 'RECTANGLE'];\nconst body = msg.payload || {};\nconst command = String(body.command || '').toUpperCase();\nconst speed = Number.isFinite(Number(body.speed)) ? Math.max(0, Math.min(255, Number(body.speed))) : 180;\n\nif (!allowed.includes(command)) {\n    msg.statusCode = 400;\n    msg.payload = { ok: false, error: 'Invalid command', allowed };\n    return [null, msg];\n}\n\nconst mqttMsg = {\n    topic: 'robot/command',\n    payload: JSON.stringify({ command, speed })\n};\n\nflow.set('lastCommand', { command, speed, sentAt: new Date().toISOString() });\nmsg.payload = { ok: true, sent: { command, speed } };\nreturn [mqttMsg, msg];",
-    "outputs": 2,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 390,
-    "y": 180,
-    "wires": [
-      [
-        "mqtt-out-command"
-      ],
-      [
-        "http-response-cmd"
-      ]
-    ]
-  },
-  {
-    "id": "mqtt-out-command",
-    "type": "mqtt out",
-    "z": "robot-tab",
-    "name": "MQTT robot/command",
-    "topic": "",
-    "qos": "0",
-    "retain": "false",
-    "respTopic": "",
-    "contentType": "",
-    "userProps": "",
-    "correl": "",
-    "expiry": "",
-    "broker": "mqtt-broker-local",
-    "x": 660,
-    "y": 160,
-    "wires": []
-  },
-  {
-    "id": "http-response-cmd",
-    "type": "http response",
-    "z": "robot-tab",
-    "name": "Command response",
-    "statusCode": "",
-    "headers": {},
-    "x": 670,
-    "y": 210,
+    "y": 40,
     "wires": []
   },
   {
     "id": "http-get-status",
     "type": "http in",
     "z": "robot-tab",
-    "name": "GET /api/status",
-    "url": "/api/status",
+    "name": "GET /robot/status",
+    "url": "/robot/status",
     "method": "get",
     "upload": false,
     "swaggerDoc": "",
-    "x": 130,
-    "y": 280,
+    "x": 150,
+    "y": 100,
     "wires": [
       [
         "read-status"
@@ -164,15 +96,15 @@
     "id": "read-status",
     "type": "function",
     "z": "robot-tab",
-    "name": "Read last status",
-    "func": "msg.payload = {\n    response: flow.get('lastResponse') || { state: 'UNKNOWN', detail: 'No MQTT response received yet' },\n    telemetry: flow.get('lastTelemetry') || null,\n    lastCommand: flow.get('lastCommand') || null\n};\nreturn msg;",
+    "name": "Read page state",
+    "func": "// Snapshot for the /robot page. Every value is written by the MQTT pipelines feeding the /ui dashboard.\nmsg.payload = {\n    command: flow.get('pageCommand') || null,\n    response: flow.get('lastResponse') || { state: 'UNKNOWN', detail: 'No MQTT response received yet' },\n    distance: flow.get('pageDistance') || null,\n    gas: flow.get('pageGas') || null,\n    alert: flow.get('alertState') || null,\n    vision: flow.get('pageVision') || null,\n    camera: flow.get('pageCamera') || null,\n    remote: flow.get('pageRemote') || null,\n    serverTime: Date.now()\n};\nmsg.headers = { 'Cache-Control': 'no-store' };\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 360,
-    "y": 280,
+    "x": 380,
+    "y": 100,
     "wires": [
       [
         "http-response-status"
@@ -187,15 +119,30 @@
     "statusCode": "",
     "headers": {},
     "x": 610,
-    "y": 280,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "robot-page-store",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Store state for /robot",
+    "func": "// Single sink for the /robot page; inputs are the same messages the /ui dashboard uses.\nswitch (msg.topic) {\n    case 'command':\n        flow.set('pageCommand', msg.payload);\n        break;\n    case 'distance':\n        flow.set('pageDistance', msg.payload);\n        break;\n    case 'gas':\n        flow.set('pageGas', msg.payload);\n        break;\n    case 'camera':\n        flow.set('pageCamera', msg.payload);\n        break;\n    case 'remote':\n        flow.set('pageRemote', msg.payload);\n        break;\n    case 'equipo1/robot/vision/status': {\n        let status = msg.payload;\n        if (typeof status === 'string') {\n            const raw = status.trim();\n            try { status = JSON.parse(raw); } catch (err) { status = { state: raw }; }\n        }\n        if (status && typeof status === 'object') {\n            flow.set('pageVision', { ...status, receivedAt: Date.now() });\n        }\n        break;\n    }\n}\nreturn null;",
+    "outputs": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 640,
+    "y": 140,
     "wires": []
   },
   {
     "id": "mqtt-in-status",
     "type": "mqtt in",
     "z": "robot-tab",
-    "name": "MQTT robot/response",
-    "topic": "robot/response",
+    "name": "MQTT equipo1/robot/response",
+    "topic": "equipo1/robot/response",
     "qos": "0",
     "datatype": "auto-detect",
     "broker": "mqtt-broker-local",
@@ -203,8 +150,8 @@
     "rap": true,
     "rh": 0,
     "inputs": 0,
-    "x": 140,
-    "y": 380,
+    "x": 150,
+    "y": 560,
     "wires": [
       [
         "store-status"
@@ -223,11 +170,11 @@
     "finalize": "",
     "libs": [],
     "x": 370,
-    "y": 380,
+    "y": 560,
     "wires": [
       [
         "debug-status",
-        "dashboard-status-format"
+        "hud-remote-snapshot"
       ]
     ]
   },
@@ -242,16 +189,16 @@
     "tostatus": false,
     "complete": "payload",
     "targetType": "msg",
-    "x": 600,
-    "y": 380,
+    "x": 620,
+    "y": 600,
     "wires": []
   },
   {
     "id": "mqtt-in-telemetry",
     "type": "mqtt in",
     "z": "robot-tab",
-    "name": "MQTT robot/telemetry",
-    "topic": "robot/telemetry",
+    "name": "MQTT equipo1/robot/telemetry",
+    "topic": "equipo1/robot/telemetry",
     "qos": "0",
     "datatype": "auto-detect",
     "broker": "mqtt-broker-local",
@@ -260,7 +207,7 @@
     "rh": 0,
     "inputs": 0,
     "x": 150,
-    "y": 460,
+    "y": 720,
     "wires": [
       [
         "store-telemetry"
@@ -278,12 +225,12 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 380,
-    "y": 460,
+    "x": 370,
+    "y": 720,
     "wires": [
       [
         "debug-telemetry",
-        "dashboard-telemetry-format"
+        "hud-route-telemetry"
       ]
     ]
   },
@@ -299,7 +246,7 @@
     "complete": "payload",
     "targetType": "msg",
     "x": 620,
-    "y": 460,
+    "y": 680,
     "wires": []
   },
   {
@@ -311,9 +258,9 @@
     "hidden": false
   },
   {
-    "id": "robot-ui-control-group",
+    "id": "hud-ui-camera-group",
     "type": "ui_group",
-    "name": "Control manual",
+    "name": "Cámara",
     "tab": "robot-ui-tab",
     "order": 1,
     "disp": true,
@@ -322,340 +269,797 @@
     "className": ""
   },
   {
-    "id": "robot-ui-status-group",
+    "id": "hud-ui-remote-group",
     "type": "ui_group",
-    "name": "Respuesta del robot",
+    "name": "Control remoto",
     "tab": "robot-ui-tab",
     "order": 2,
     "disp": true,
-    "width": "6",
+    "width": "4",
     "collapse": false,
     "className": ""
   },
   {
-    "id": "robot-ui-speed",
-    "type": "ui_slider",
-    "z": "robot-tab",
-    "name": "Velocidad PWM",
-    "label": "Velocidad PWM",
-    "tooltip": "",
-    "group": "robot-ui-control-group",
-    "order": 1,
-    "width": 6,
-    "height": 1,
-    "passthru": true,
-    "outs": "all",
-    "topic": "speed",
-    "topicType": "str",
-    "min": 0,
-    "max": "255",
-    "step": 1,
-    "className": "",
-    "x": 140,
-    "y": 540,
-    "wires": [
-      [
-        "dashboard-store-speed"
-      ]
-    ]
-  },
-  {
-    "id": "dashboard-store-speed",
-    "type": "function",
-    "z": "robot-tab",
-    "name": "Store dashboard speed",
-    "func": "const speed = Math.max(0, Math.min(255, Number(msg.payload) || 0));\nflow.set('dashboardSpeed', speed);\nmsg.payload = speed;\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "flow.set('dashboardSpeed', flow.get('dashboardSpeed') || 180);",
-    "finalize": "",
-    "libs": [],
-    "x": 390,
-    "y": 540,
-    "wires": [
-      []
-    ]
-  },
-  {
-    "id": "robot-ui-forward",
-    "type": "ui_button",
-    "z": "robot-tab",
-    "name": "FORWARD",
-    "group": "robot-ui-control-group",
-    "order": 2,
-    "width": 2,
-    "height": 1,
-    "passthru": false,
-    "label": "▲ FORWARD",
-    "tooltip": "Avanzar",
-    "color": "",
-    "bgcolor": "#2563eb",
-    "className": "",
-    "icon": "",
-    "payload": "FORWARD",
-    "payloadType": "str",
-    "topic": "command",
-    "topicType": "str",
-    "x": 130,
-    "y": 600,
-    "wires": [
-      [
-        "dashboard-build-command"
-      ]
-    ]
-  },
-  {
-    "id": "robot-ui-ccw",
-    "type": "ui_button",
-    "z": "robot-tab",
-    "name": "CCW",
-    "group": "robot-ui-control-group",
+    "id": "hud-ui-sensors-group",
+    "type": "ui_group",
+    "name": "Sensores",
+    "tab": "robot-ui-tab",
     "order": 3,
-    "width": 2,
-    "height": 1,
-    "passthru": false,
-    "label": "↺ CCW",
-    "tooltip": "Girar antihorario",
-    "color": "",
-    "bgcolor": "#2563eb",
-    "className": "",
-    "icon": "",
-    "payload": "CCW",
+    "disp": true,
+    "width": "4",
+    "collapse": false,
+    "className": ""
+  },
+  {
+    "id": "hud-clock-tick",
+    "type": "inject",
+    "z": "robot-tab",
+    "name": "Reloj 1 s",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "1",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "0.5",
+    "topic": "tick",
+    "payload": "",
+    "payloadType": "date",
+    "x": 150,
+    "y": 220,
+    "wires": [
+      [
+        "hud-remote-snapshot",
+        "hud-evaluate-alerts"
+      ]
+    ]
+  },
+  {
+    "id": "hud-camera-base-url",
+    "type": "inject",
+    "z": "robot-tab",
+    "name": "URL del servidor de cámara",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "0.5",
+    "topic": "base",
+    "payload": "http://localhost:8000",
     "payloadType": "str",
-    "topic": "command",
-    "topicType": "str",
-    "x": 120,
-    "y": 640,
+    "x": 190,
+    "y": 300,
     "wires": [
       [
-        "dashboard-build-command"
+        "hud-camera-config"
       ]
-    ]
+    ],
+    "info": "Base URL of camera_stream/stream_server.py. `localhost` only works when the dashboard is opened on the laptop itself. On the phone, replace it with the laptop LAN IP, e.g. http://192.168.1.50:8000, and redeploy."
   },
   {
-    "id": "robot-ui-stop",
-    "type": "ui_button",
-    "z": "robot-tab",
-    "name": "STOP",
-    "group": "robot-ui-control-group",
-    "order": 4,
-    "width": 2,
-    "height": 1,
-    "passthru": false,
-    "label": "■ STOP",
-    "tooltip": "Detener",
-    "color": "",
-    "bgcolor": "#dc2626",
-    "className": "",
-    "icon": "",
-    "payload": "STOP",
-    "payloadType": "str",
-    "topic": "command",
-    "topicType": "str",
-    "x": 120,
-    "y": 680,
-    "wires": [
-      [
-        "dashboard-build-command"
-      ]
-    ]
-  },
-  {
-    "id": "robot-ui-cw",
-    "type": "ui_button",
-    "z": "robot-tab",
-    "name": "CW",
-    "group": "robot-ui-control-group",
-    "order": 5,
-    "width": 2,
-    "height": 1,
-    "passthru": false,
-    "label": "↻ CW",
-    "tooltip": "Girar horario",
-    "color": "",
-    "bgcolor": "#2563eb",
-    "className": "",
-    "icon": "",
-    "payload": "CW",
-    "payloadType": "str",
-    "topic": "command",
-    "topicType": "str",
-    "x": 120,
-    "y": 720,
-    "wires": [
-      [
-        "dashboard-build-command"
-      ]
-    ]
-  },
-  {
-    "id": "robot-ui-backward",
-    "type": "ui_button",
-    "z": "robot-tab",
-    "name": "BACKWARD",
-    "group": "robot-ui-control-group",
-    "order": 6,
-    "width": 2,
-    "height": 1,
-    "passthru": false,
-    "label": "▼ BACKWARD",
-    "tooltip": "Retroceder",
-    "color": "",
-    "bgcolor": "#2563eb",
-    "className": "",
-    "icon": "",
-    "payload": "BACKWARD",
-    "payloadType": "str",
-    "topic": "command",
-    "topicType": "str",
-    "x": 140,
-    "y": 760,
-    "wires": [
-      [
-        "dashboard-build-command"
-      ]
-    ]
-  },
-  {
-    "id": "dashboard-build-command",
-    "type": "function",
-    "z": "robot-tab",
-    "name": "Dashboard command to MQTT",
-    "func": "const command = String(msg.payload || '').toUpperCase();\nconst speed = Math.max(0, Math.min(255, Number(flow.get('dashboardSpeed')) || 180));\nflow.set('lastCommand', { command, speed, sentAt: new Date().toISOString(), source: 'dashboard' });\nmsg.topic = 'robot/command';\nmsg.payload = JSON.stringify({ command, speed });\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 420,
-    "y": 700,
-    "wires": [
-      [
-        "mqtt-out-command"
-      ]
-    ]
-  },
-  {
-    "id": "robot-ui-state",
-    "type": "ui_text",
-    "z": "robot-tab",
-    "group": "robot-ui-status-group",
-    "order": 1,
-    "width": 6,
-    "height": 1,
-    "name": "Respuesta del robot",
-    "label": "Respuesta del robot",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "className": "",
-    "x": 620,
-    "y": 540,
-    "wires": []
-  },
-  {
-    "id": "robot-ui-telemetry",
-    "type": "ui_text",
-    "z": "robot-tab",
-    "group": "robot-ui-status-group",
-    "order": 2,
-    "width": 6,
-    "height": 2,
-    "name": "Telemetría",
-    "label": "Telemetría",
-    "format": "{{msg.payload}}",
-    "layout": "row-spread",
-    "className": "",
-    "x": 630,
-    "y": 600,
-    "wires": []
-  },
-  {
-    "id": "dashboard-status-format",
-    "type": "function",
-    "z": "robot-tab",
-    "name": "Format dashboard response",
-    "func": "let payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { payload = { raw: msg.payload }; }\n}\nmsg.payload = `${payload.ok === false ? 'ERROR' : 'OK'} | ${payload.state || 'UNKNOWN'} | ${payload.detail || ''}`;\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 390,
-    "y": 420,
-    "wires": [
-      [
-        "robot-ui-state"
-      ]
-    ]
-  },
-  {
-    "id": "robot-ui-distance-indicator",
+    "id": "hud-ui-camera-video",
     "type": "ui_template",
     "z": "robot-tab",
-    "group": "robot-ui-status-group",
-    "name": "Indicador de distancia",
-    "order": 3,
+    "group": "hud-ui-camera-group",
+    "name": "Video de la cámara",
+    "order": 1,
     "width": 6,
-    "height": 3,
-    "format": "<style>\n.robot-distance { padding: 8px 0; font-size: 16px; }\n.robot-distance .reading { font-size: 24px; font-weight: 700; }\n.robot-distance .track { height: 22px; border-radius: 12px; background: #ddd; overflow: hidden; margin: 10px 0; }\n.robot-distance .fill { height: 100%; transition: width .25s ease, background-color .25s ease; }\n.robot-distance .danger { color: #b91c1c; }\n.robot-distance .caution { color: #92400e; }\n.robot-distance .safe { color: #166534; }\n.robot-distance .unavailable { color: #52525b; }\n</style>\n<div class=\"robot-distance\" ng-class=\"display.level\" aria-live=\"polite\">\n  <div class=\"reading\">{{display.distance === null ? '—' : (display.distance + ' cm')}}</div>\n  <div class=\"track\" role=\"progressbar\" aria-label=\"Distancia ultrasónica\" aria-valuemin=\"0\" aria-valuemax=\"200\" aria-valuenow=\"{{display.distance === null ? '' : display.distance}}\">\n    <div class=\"fill\" ng-style=\"{'width': (display.percent || 0) + '%', 'background-color': display.level === 'danger' ? '#dc2626' : display.level === 'caution' ? '#d97706' : display.level === 'safe' ? '#16a34a' : '#a1a1aa'}\"></div>\n  </div>\n  <strong>{{display.label}}</strong>\n</div>\n<script>\n(function(scope) {\n  scope.display = { distance: null, percent: 0, level: 'unavailable', label: 'Esperando telemetría' };\n  function update() {\n    var reading = scope.msg && scope.msg.payload;\n    var timestamp = reading && Date.parse(reading.receivedAt);\n    if (!reading || reading.level === 'unavailable') {\n      scope.display = { distance: null, percent: 0, level: 'unavailable', label: reading ? reading.label : 'Esperando telemetría' };\n    } else if (!Number.isFinite(timestamp) || Date.now() - timestamp > 5000 || timestamp > Date.now() + 5000) {\n      scope.display = { distance: null, percent: 0, level: 'unavailable', label: 'Telemetría desactualizada' };\n    } else {\n      scope.display = reading;\n    }\n  }\n  scope.$watch('msg', update);\n  var timer = setInterval(function() { scope.$applyAsync(update); }, 1000);\n  scope.$on('$destroy', function() { clearInterval(timer); });\n})(scope);\n</script>",
+    "height": 4,
+    "format": "<style>\n.hud-video { position: relative; width: 100%; height: 100%; min-height: 180px; background: #111; border-radius: 6px; overflow: hidden; cursor: pointer; }\n.hud-video img { width: 100%; height: 100%; object-fit: contain; display: block; }\n.hud-video .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: #d4d4d8; font-size: 14px; }\n</style>\n<div class=\"hud-video\" id=\"hud-video-box\" title=\"Toca para reconectar\">\n  <img id=\"hud-video-img\" alt=\"Video de la cámara del robot\">\n  <div class=\"overlay\" id=\"hud-video-overlay\">Esperando URL del servidor de cámara</div>\n</div>\n<script>\n(function(scope) {\n  var base = null, view = 'raw', retryTimer = null, pollTimer = null;\n  function el(id) { return document.getElementById(id); }\n  function show(text) {\n    var overlay = el('hud-video-overlay');\n    if (overlay) { overlay.textContent = text; overlay.style.display = text ? 'flex' : 'none'; }\n  }\n  function connect() {\n    var img = el('hud-video-img');\n    if (!img || !base) return;\n    clearTimeout(retryTimer);\n    img.onerror = function() {\n      show('Sin video en ' + base + ', reintentando...');\n      img.removeAttribute('src');\n      retryTimer = setTimeout(connect, 3000);\n    };\n    show('Conectando a ' + base + '...');\n    img.src = base + '/' + view + '.mjpg?t=' + Date.now();\n  }\n  pollTimer = setInterval(function() {\n    var img = el('hud-video-img');\n    if (img && img.getAttribute('src') && img.naturalWidth > 0) show('');\n  }, 500);\n  setTimeout(function() {\n    var box = el('hud-video-box');\n    if (box) box.onclick = connect;\n  }, 0);\n  scope.$watch('msg', function(msg) {\n    var cfg = msg && msg.payload;\n    if (!cfg || typeof cfg.base !== 'string' || !cfg.base) return;\n    var nextView = cfg.view === 'filtered' ? 'filtered' : 'raw';\n    if (cfg.base === base && nextView === view) return;\n    base = cfg.base;\n    view = nextView;\n    setTimeout(connect, 0);\n  });\n  scope.$on('$destroy', function() {\n    clearTimeout(retryTimer);\n    clearInterval(pollTimer);\n    var img = el('hud-video-img');\n    if (img) { img.onerror = null; img.removeAttribute('src'); }\n  });\n})(scope);\n</script>",
     "storeOutMessages": true,
     "fwdInMessages": false,
     "resendOnRefresh": true,
     "templateScope": "local",
     "className": "",
     "x": 650,
-    "y": 650,
+    "y": 300,
     "wires": [
       []
     ]
   },
   {
-    "id": "dashboard-telemetry-format",
+    "id": "hud-mqtt-in-vision-status",
+    "type": "mqtt in",
+    "z": "robot-tab",
+    "name": "MQTT equipo1/robot/vision/status",
+    "topic": "equipo1/robot/vision/status",
+    "qos": "1",
+    "datatype": "auto-detect",
+    "broker": "mqtt-broker-local",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 170,
+    "y": 360,
+    "wires": [
+      [
+        "hud-format-vision-status",
+        "robot-page-store"
+      ]
+    ]
+  },
+  {
+    "id": "hud-format-vision-status",
     "type": "function",
     "z": "robot-tab",
-    "name": "Format dashboard telemetry",
-    "func": "let payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { payload = null; }\n}\nconst value = payload && Number(payload.value);\nconst valid = payload && payload.valid === true && payload.unit === 'cm' &&\n    typeof payload.value === 'number' && Number.isFinite(value) && value >= 2 && value <= 200;\nconst text = valid ? `Distancia: ${value} cm` :\n    `Sensor no disponible: ${(payload && payload.reason) || 'medición inválida'}`;\nconst indicator = valid ? {\n    distance: value,\n    percent: value / 2,\n    level: value < 20 ? 'danger' : value <= 50 ? 'caution' : 'safe',\n    label: value < 20 ? 'Muy cerca' : value <= 50 ? 'Precaución' : 'Distancia segura',\n    receivedAt: payload.receivedAt || new Date().toISOString()\n} : { level: 'unavailable', label: 'Sensor no disponible' };\nreturn [{ ...msg, payload: text }, { ...msg, payload: indicator }];",
+    "name": "Format camera server status",
+    "func": "let status = msg.payload;\nif (typeof status === 'string') {\n    const raw = status.trim();\n    try { status = JSON.parse(raw); } catch (err) { status = { state: raw }; }\n}\nif (!status || typeof status !== 'object') {\n    return [{ payload: 'Estado desconocido' }, null];\n}\nif (status.state !== 'online') {\n    return [{ payload: 'Servidor de cámara desconectado' }, null];\n}\nconst LABELS = { none: 'Original', canny: 'Canny', blackhat: 'Black-hat', sobel: 'Sobel', laplacian: 'Laplaciano' };\nconst camera = status.connected === false ? 'cámara sin señal' : 'cámara conectada';\nconst fps = Number.isFinite(Number(status.fps)) ? `${Number(status.fps).toFixed(0)} fps` : '— fps';\nconst filter = LABELS[status.filter] || 'Original';\nconst cost = typeof status.filterMs === 'number' ? ` (${status.filterMs.toFixed(0)} ms)` : '';\nconst text = { payload: `En línea · ${camera} · ${fps} · ${filter}${cost}` };\nif (!status.filter || status.filter === context.get('filter')) return [text, null];\ncontext.set('filter', status.filter);\nreturn [text, { payload: status.filter }];",
     "outputs": 2,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 400,
-    "y": 500,
+    "x": 420,
+    "y": 360,
     "wires": [
       [
-        "robot-ui-telemetry"
+        "hud-ui-vision-status"
       ],
       [
-        "robot-ui-distance-indicator"
+        "hud-ui-filter-dropdown"
       ]
     ]
   },
   {
-    "id": "robot-ui-rectangle",
-    "type": "ui_button",
+    "id": "hud-camera-config",
+    "type": "function",
     "z": "robot-tab",
-    "name": "RECTANGLE",
-    "group": "robot-ui-control-group",
-    "order": 7,
-    "width": 6,
+    "name": "Camera view config",
+    "func": "if (msg.topic === 'base' && typeof msg.payload === 'string' && msg.payload.trim()) {\n    context.set('base', msg.payload.trim().replace(/\\/+$/, ''));\n} else if (msg.topic === 'view') {\n    context.set('view', msg.payload === true ? 'filtered' : 'raw');\n} else {\n    return null;\n}\nconst base = context.get('base');\nif (!base) return null;\nreturn { payload: { base, view: context.get('view') || 'raw' } };",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 300,
+    "wires": [
+      [
+        "hud-ui-camera-video"
+      ]
+    ]
+  },
+  {
+    "id": "hud-ui-view-switch",
+    "type": "ui_switch",
+    "z": "robot-tab",
+    "name": "Vista filtrada",
+    "label": "Filtrada",
+    "tooltip": "Ver la imagen filtrada",
+    "group": "hud-ui-camera-group",
+    "order": 4,
+    "width": 2,
     "height": 1,
     "passthru": false,
-    "label": "Iniciar rutina rectangular",
-    "tooltip": "Ejecutar trayectoria rectangular",
-    "color": "",
-    "bgcolor": "#16a34a",
-    "className": "",
-    "icon": "",
-    "payload": "RECTANGLE",
-    "payloadType": "str",
-    "topic": "command",
+    "decouple": "false",
+    "topic": "view",
     "topicType": "str",
+    "style": "",
+    "onvalue": "true",
+    "onvalueType": "bool",
+    "onicon": "",
+    "oncolor": "",
+    "offvalue": "false",
+    "offvalueType": "bool",
+    "officon": "",
+    "offcolor": "",
+    "animate": false,
+    "className": "",
+    "x": 170,
+    "y": 260,
+    "wires": [
+      [
+        "hud-camera-config"
+      ]
+    ]
+  },
+  {
+    "id": "hud-ui-filter-dropdown",
+    "type": "ui_dropdown",
+    "z": "robot-tab",
+    "name": "Filtro",
+    "label": "Filtro",
+    "tooltip": "",
+    "place": "Filtro",
+    "group": "hud-ui-camera-group",
+    "order": 3,
+    "width": 4,
+    "height": 1,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "Original",
+        "value": "none",
+        "type": "str"
+      },
+      {
+        "label": "Canny",
+        "value": "canny",
+        "type": "str"
+      },
+      {
+        "label": "Black-hat",
+        "value": "blackhat",
+        "type": "str"
+      },
+      {
+        "label": "Sobel",
+        "value": "sobel",
+        "type": "str"
+      },
+      {
+        "label": "Laplaciano",
+        "value": "laplacian",
+        "type": "str"
+      }
+    ],
+    "payload": "",
+    "topic": "filter",
+    "topicType": "str",
+    "className": "",
+    "x": 650,
+    "y": 460,
+    "wires": [
+      [
+        "hud-filter-command"
+      ]
+    ]
+  },
+  {
+    "id": "hud-filter-command",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Validate filter command",
+    "func": "// Shared by the /ui dropdown and POST /robot/vision/filter.\n// Output 1 feeds the only mqtt out node in this flow, hard-wired to equipo1/robot/vision/filter.\nconst MODES = ['none', 'canny', 'blackhat', 'sobel', 'laplacian'];\nconst fromHttp = !!msg.res;\nconst body = msg.payload;\nconst requested = typeof body === 'string' ? body : (body && typeof body === 'object' ? body.filter : null);\nconst filter = String(requested || '').trim().toLowerCase();\nif (!MODES.includes(filter)) {\n    if (!fromHttp) { node.warn(`Ignored unknown filter: ${requested}`); return [null, null]; }\n    msg.statusCode = 400;\n    msg.payload = { ok: false, error: 'Invalid filter', allowed: MODES };\n    return [null, msg];\n}\nconst publish = { payload: filter, qos: 1, retain: true };\nif (!fromHttp) return [publish, null];\nmsg.payload = { ok: true, filter };\nreturn [publish, msg];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 900,
+    "y": 460,
+    "wires": [
+      [
+        "hud-mqtt-out-filter"
+      ],
+      [
+        "robot-http-response-filter"
+      ]
+    ]
+  },
+  {
+    "id": "hud-mqtt-out-filter",
+    "type": "mqtt out",
+    "z": "robot-tab",
+    "name": "MQTT equipo1/robot/vision/filter (retained)",
+    "topic": "equipo1/robot/vision/filter",
+    "qos": "1",
+    "retain": "true",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "mqtt-broker-local",
+    "x": 1160,
+    "y": 440,
+    "wires": []
+  },
+  {
+    "id": "robot-http-post-filter",
+    "type": "http in",
+    "z": "robot-tab",
+    "name": "POST /robot/vision/filter",
+    "url": "/robot/vision/filter",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 660,
+    "y": 500,
+    "wires": [
+      [
+        "hud-filter-command"
+      ]
+    ]
+  },
+  {
+    "id": "robot-http-response-filter",
+    "type": "http response",
+    "z": "robot-tab",
+    "name": "Filter response",
+    "statusCode": "",
+    "headers": {},
+    "x": 1130,
+    "y": 500,
+    "wires": []
+  },
+  {
+    "id": "hud-ui-vision-status",
+    "type": "ui_text",
+    "z": "robot-tab",
+    "group": "hud-ui-camera-group",
+    "order": 2,
+    "width": 6,
+    "height": 1,
+    "name": "Estado del servidor de cámara",
+    "label": "Servidor",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "className": "",
+    "style": false,
+    "font": "",
+    "fontSize": "",
+    "color": "#000000",
+    "x": 670,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "hud-mqtt-in-command",
+    "type": "mqtt in",
+    "z": "robot-tab",
+    "name": "MQTT equipo1/robot/command",
+    "topic": "equipo1/robot/command",
+    "qos": "0",
+    "datatype": "auto-detect",
+    "broker": "mqtt-broker-local",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
     "x": 150,
+    "y": 460,
+    "wires": [
+      [
+        "hud-parse-command"
+      ]
+    ]
+  },
+  {
+    "id": "hud-parse-command",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Parse remote command",
+    "func": "// equipo1/robot/command contract (firmware/remote_control_mqtt):\n//   {\"command\":\"DRIVE\",\"left\",\"right\",\"x\",\"y\" (-255..255),\"speed\",\"seq\"} at 10 Hz,\n//   {\"command\":\"STOP\",\"seq\"} and {\"command\":\"PATROL\",\"seq\"} on button presses.\n// Legacy commands FORWARD/BACKWARD/CW/CCW/STOP/RECTANGLE (optional \"x\"/\"y\" in -100..100,\n// optional \"motorASpeed\"/\"motorBSpeed\") are still accepted.\n// Output: one normalized state for both UIs; x/y are scaled to -100..100.\nconst LEGACY_MOVES = ['FORWARD', 'BACKWARD', 'CW', 'CCW'];\nconst COMMANDS = ['DRIVE', 'STOP', 'PATROL', 'RECTANGLE', ...LEGACY_MOVES];\n// |left| or |right| below this counts as no motion.\nconst DEAD_BAND = 20;\n\n// D-pad direction from the differential motor commands.\nfunction deriveDirection(left, right) {\n    const l = Math.abs(left) < DEAD_BAND ? 0 : left;\n    const r = Math.abs(right) < DEAD_BAND ? 0 : right;\n    if (l === 0 && r === 0) return 'IDLE';\n    if (l > 0 && r > 0) return 'FORWARD';\n    if (l < 0 && r < 0) return 'BACKWARD';\n    return l > r ? 'CW' : 'CCW';\n}\n\nlet payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { node.warn('Ignored invalid equipo1/robot/command'); return null; }\n}\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    node.warn('Ignored invalid equipo1/robot/command');\n    return null;\n}\nconst command = String(payload.command || '').trim().toUpperCase();\nif (!COMMANDS.includes(command)) {\n    node.warn(`Ignored unknown command: ${command}`);\n    return null;\n}\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\nconst num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);\n\n// STOP, PATROL and RECTANGLE are one-shot messages; keep showing them while the\n// following DRIVE messages are idle, until real motion or another command arrives.\nlet mode = context.get('mode') || null;\nlet direction;\nlet left = null;\nlet right = null;\nswitch (command) {\n    case 'DRIVE':\n        left = clamp(Math.round(num(payload.left) ?? 0), -255, 255);\n        right = clamp(Math.round(num(payload.right) ?? 0), -255, 255);\n        direction = deriveDirection(left, right);\n        if (direction !== 'IDLE') mode = null;\n        break;\n    case 'STOP':\n    case 'PATROL':\n    case 'RECTANGLE':\n        mode = command;\n        direction = 'IDLE';\n        break;\n    default:\n        mode = null;\n        direction = command;\n}\ncontext.set('mode', mode);\nif (mode === 'STOP') direction = 'STOP';\n\nconst axisScale = command === 'DRIVE' ? 100 / 255 : 1;\nconst axis = (v) => (v === null ? 0 : clamp(Math.round(v * axisScale), -100, 100));\nconst speed = num(payload.speed);\nconst axisX = num(payload.x);\nconst axisY = num(payload.y);\nmsg.payload = {\n    command,\n    direction,\n    routine: mode === 'PATROL' || mode === 'RECTANGLE' ? mode : null,\n    hasMotors: left !== null,\n    left,\n    right,\n    speed: speed === null ? null : clamp(Math.round(speed), 0, 255),\n    motorASpeed: num(payload.motorASpeed),\n    motorBSpeed: num(payload.motorBSpeed),\n    hasJoystick: axisX !== null && axisY !== null,\n    x: axis(axisX),\n    y: axis(axisY),\n    seq: num(payload.seq),\n    receivedAt: Date.now()\n};\nmsg.topic = 'command';\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 460,
+    "wires": [
+      [
+        "hud-remote-snapshot",
+        "robot-page-store"
+      ]
+    ]
+  },
+  {
+    "id": "hud-mqtt-in-camera",
+    "type": "mqtt in",
+    "z": "robot-tab",
+    "name": "MQTT equipo1/robot/camera",
+    "topic": "equipo1/robot/camera",
+    "qos": "0",
+    "datatype": "auto-detect",
+    "broker": "mqtt-broker-local",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 980,
+    "wires": [
+      [
+        "hud-parse-camera"
+      ]
+    ]
+  },
+  {
+    "id": "hud-parse-camera",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Parse camera command",
+    "func": "// equipo1/robot/camera (firmware/remote_control_mqtt): {\"pan\",\"tilt\"} rates in -255..255 at 10 Hz\n// while the camera joystick is off-center plus one final zero, or {\"command\":\"CENTER\"}.\nlet payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { node.warn('Ignored invalid equipo1/robot/camera'); return null; }\n}\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    node.warn('Ignored invalid equipo1/robot/camera');\n    return null;\n}\nconst clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\nconst num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);\nconst now = Date.now();\nconst state = Object.assign({ pan: 0, tilt: 0, movedAt: null, centerAt: null }, context.get('state'));\n\nif (String(payload.command || '').trim().toUpperCase() === 'CENTER') {\n    state.centerAt = now;\n} else if (num(payload.pan) !== null || num(payload.tilt) !== null) {\n    state.pan = clamp(Math.round(num(payload.pan) ?? 0), -255, 255);\n    state.tilt = clamp(Math.round(num(payload.tilt) ?? 0), -255, 255);\n    state.movedAt = now;\n} else {\n    node.warn('Ignored invalid equipo1/robot/camera');\n    return null;\n}\nstate.receivedAt = now;\ncontext.set('state', state);\nmsg.topic = 'camera';\nmsg.payload = { ...state };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 980,
+    "wires": [
+      [
+        "hud-remote-snapshot",
+        "robot-page-store"
+      ]
+    ]
+  },
+  {
+    "id": "hud-mqtt-in-remote-status",
+    "type": "mqtt in",
+    "z": "robot-tab",
+    "name": "MQTT equipo1/robot/remote/status",
+    "topic": "equipo1/robot/remote/status",
+    "qos": "0",
+    "datatype": "auto-detect",
+    "broker": "mqtt-broker-local",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 160,
+    "y": 1040,
+    "wires": [
+      [
+        "hud-parse-remote-status"
+      ]
+    ]
+  },
+  {
+    "id": "hud-parse-remote-status",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Parse remote status",
+    "func": "// equipo1/robot/remote/status (retained, firmware/remote_control_mqtt), every 2 s and on change:\n//   {\"state\":\"online\",\"speed\",\"stopLatched\",\"battery\":volts|null,\"rssi\",\"uptimeMs\"}\n// Last will: {\"state\":\"offline\"}.\nlet payload = msg.payload;\nif (typeof payload === 'string') {\n    try { payload = JSON.parse(payload); } catch (err) { node.warn('Ignored invalid equipo1/robot/remote/status'); return null; }\n}\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    node.warn('Ignored invalid equipo1/robot/remote/status');\n    return null;\n}\nconst state = String(payload.state || '').trim().toLowerCase();\nif (state !== 'online' && state !== 'offline') {\n    node.warn(`Ignored unknown remote state: ${state}`);\n    return null;\n}\nconst num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);\nmsg.topic = 'remote';\nmsg.payload = {\n    state,\n    speed: num(payload.speed),\n    stopLatched: payload.stopLatched === true,\n    battery: num(payload.battery),\n    rssi: num(payload.rssi),\n    uptimeMs: num(payload.uptimeMs),\n    receivedAt: Date.now()\n};\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 1040,
+    "wires": [
+      [
+        "hud-remote-snapshot",
+        "robot-page-store"
+      ]
+    ]
+  },
+  {
+    "id": "hud-remote-snapshot",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Remote/robot snapshot",
+    "func": "// Feeds the /ui templates: 1) direction/speed, 2) robot state, 3) remote link + camera joystick.\n// equipo1/robot/command arrives at 10 Hz, so updates are throttled to one every MIN_INTERVAL_MS (<= 5 Hz):\n// intermediate states are dropped and the latest one is always delivered (trailing flush).\n// One-shot events (STOP, PATROL, CENTER) survive the throttle because they are sticky state.\nconst MIN_INTERVAL_MS = 200;\nconst dirty = context.get('dirty') || { cmd: false, res: false, link: false };\nswitch (msg.topic) {\n    case 'tick':\n        dirty.cmd = dirty.res = dirty.link = true;\n        break;\n    case 'command':\n        context.set('command', msg.payload);\n        dirty.cmd = true;\n        break;\n    case 'equipo1/robot/response':\n        context.set('response', msg.payload);\n        dirty.res = true;\n        break;\n    case 'camera':\n        context.set('camera', msg.payload);\n        dirty.link = true;\n        break;\n    case 'remote':\n        context.set('remote', msg.payload);\n        dirty.link = true;\n        break;\n    default:\n        return null;\n}\ncontext.set('dirty', dirty);\n\nfunction flush() {\n    const d = context.get('dirty') || {};\n    const now = Date.now();\n    context.set('dirty', { cmd: false, res: false, link: false });\n    context.set('flushScheduled', false);\n    context.set('lastFlushAt', now);\n    node.send([\n        d.cmd ? { payload: { cmd: context.get('command') || null, now } } : null,\n        d.res ? { payload: { res: context.get('response') || null, now } } : null,\n        d.link ? { payload: { remote: context.get('remote') || null, camera: context.get('camera') || null, now } } : null\n    ]);\n}\n\nconst wait = MIN_INTERVAL_MS - (Date.now() - (context.get('lastFlushAt') || 0));\nif (wait <= 0) {\n    flush();\n} else if (!context.get('flushScheduled')) {\n    context.set('flushScheduled', true);\n    setTimeout(flush, wait);\n}\nreturn null;",
+    "outputs": 3,
+    "noerr": 0,
+    "initialize": "// A redeploy clears pending timers; never start with a stale scheduled flag.\ncontext.set('flushScheduled', false);",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 520,
+    "wires": [
+      [
+        "hud-ui-remote-view"
+      ],
+      [
+        "hud-ui-robot-state"
+      ],
+      [
+        "hud-ui-remote-link"
+      ]
+    ]
+  },
+  {
+    "id": "hud-ui-remote-view",
+    "type": "ui_template",
+    "z": "robot-tab",
+    "group": "hud-ui-remote-group",
+    "name": "Dirección y velocidad",
+    "order": 1,
+    "width": 4,
+    "height": 4,
+    "format": "<style>\n.hud-remote { display: flex; gap: 10px; align-items: center; justify-content: space-between; font-size: 13px; }\n.hud-remote .pad { display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(3, 34px); gap: 4px; }\n.hud-remote .pad div { display: grid; place-items: center; border-radius: 8px; font-size: 18px; background: rgba(127,127,127,.15); color: #71717a; transition: background .15s, color .15s; }\n.hud-remote .pad .blank { background: transparent; }\n.hud-remote .pad .on { background: #2563eb; color: #fff; }\n.hud-remote .pad .stop.on { background: #dc2626; }\n.hud-remote .side { flex: 1; display: flex; flex-direction: column; gap: 6px; align-items: center; }\n.hud-remote .joy { position: relative; width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(127,127,127,.4); }\n.hud-remote .joy .dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #2563eb; transition: left .1s, top .1s; }\n.hud-remote .cmd { font-weight: 700; font-size: 15px; }\n.hud-remote .routine { padding: 2px 8px; border-radius: 999px; background: #16a34a; color: #fff; font-size: 11px; font-weight: 700; }\n.hud-remote .bar { width: 100%; height: 8px; border-radius: 999px; background: rgba(127,127,127,.2); overflow: hidden; }\n.hud-remote .bar div { height: 100%; background: #2563eb; transition: width .2s; }\n.hud-remote .age { color: #71717a; font-size: 12px; }\n.hud-remote .age.stale { color: #d97706; font-weight: 700; }\n.hud-motors { display: grid; gap: 4px; margin-top: 8px; font-size: 12px; }\n.hud-motors .row { display: grid; grid-template-columns: 62px 1fr 36px; gap: 6px; align-items: center; }\n.hud-motors .row b { text-align: right; font-variant-numeric: tabular-nums; }\n.hud-motors .cbar { position: relative; height: 8px; border-radius: 999px; background: rgba(127,127,127,.2); overflow: hidden; }\n.hud-motors .cbar::after { content: \"\"; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(127,127,127,.6); }\n.hud-motors .cbar div { position: absolute; top: 0; bottom: 0; background: #2563eb; transition: left .15s, width .15s; }\n.hud-motors .cbar div.rev { background: #d97706; }\n</style>\n<div class=\"hud-remote\" aria-live=\"polite\">\n  <div class=\"pad\" aria-label=\"Dirección actual\">\n    <div class=\"blank\"></div><div ng-class=\"{on: cmd.direction === 'FORWARD'}\">▲</div><div class=\"blank\"></div>\n    <div ng-class=\"{on: cmd.direction === 'CCW'}\">↺</div><div class=\"stop\" ng-class=\"{on: cmd.direction === 'STOP'}\">■</div><div ng-class=\"{on: cmd.direction === 'CW'}\">↻</div>\n    <div class=\"blank\"></div><div ng-class=\"{on: cmd.direction === 'BACKWARD'}\">▼</div><div class=\"blank\"></div>\n  </div>\n  <div class=\"side\">\n    <div class=\"joy\" ng-if=\"cmd.hasJoystick\"><div class=\"dot\" ng-style=\"{left: (50 + cmd.x / 2) + '%', top: (50 - cmd.y / 2) + '%'}\"></div></div>\n    <span class=\"routine\" ng-if=\"cmd.routine\">{{ routineLabels[cmd.routine] }}</span>\n    <div class=\"cmd\">{{ cmd ? (labels[cmd.direction] || cmd.direction) : 'Sin comandos' }}</div>\n    <div class=\"bar\" role=\"progressbar\" aria-label=\"Velocidad\" aria-valuemin=\"0\" aria-valuemax=\"255\" aria-valuenow=\"{{cmd.speed}}\"><div ng-style=\"{width: ((cmd.speed || 0) / 2.55) + '%'}\"></div></div>\n    <div>Velocidad: {{ cmd && cmd.speed !== null ? cmd.speed + ' / 255' : '—' }}</div>\n    <div class=\"age\" ng-class=\"{stale: age > STALE_MS}\">{{ ageText }}</div>\n  </div>\n</div>\n<div class=\"hud-motors\" ng-if=\"cmd.hasMotors\" aria-label=\"Motores\">\n  <div class=\"row\"><span>Motor izq.</span><div class=\"cbar\"><div ng-class=\"{rev: cmd.left < 0}\" ng-style=\"bar(cmd.left)\"></div></div><b>{{ cmd.left }}</b></div>\n  <div class=\"row\"><span>Motor der.</span><div class=\"cbar\"><div ng-class=\"{rev: cmd.right < 0}\" ng-style=\"bar(cmd.right)\"></div></div><b>{{ cmd.right }}</b></div>\n</div>\n<script>\n(function(scope) {\n  // The remote publishes equipo1/robot/command at 10 Hz; the robot dead-man stops after ~500 ms of silence.\n  scope.STALE_MS = 1000;\n  scope.labels = { FORWARD: 'Adelante', BACKWARD: 'Atrás', CW: 'Giro horario', CCW: 'Giro antihorario', STOP: 'Paro (STOP)', IDLE: 'Detenido' };\n  scope.routineLabels = { PATROL: 'PATRULLA', RECTANGLE: 'RUTINA RECTÁNGULO' };\n  scope.cmd = null;\n  scope.age = Infinity;\n  scope.ageText = 'Esperando control remoto';\n  // Centered bar for a -255..255 motor command.\n  scope.bar = function(v) {\n    var half = Math.min(255, Math.abs(v || 0)) / 255 * 50;\n    return { left: ((v || 0) >= 0 ? 50 : 50 - half) + '%', width: half + '%' };\n  };\n  var serverNow = 0, arrivedAt = 0;\n  function update() {\n    if (!scope.cmd) return;\n    // Server clock plus local elapsed time: immune to phone/laptop clock skew.\n    scope.age = Math.max(0, serverNow + (Date.now() - arrivedAt) - scope.cmd.receivedAt);\n    scope.ageText = 'Última orden hace ' + (scope.age / 1000).toFixed(1) + ' s';\n  }\n  scope.$watch('msg', function(msg) {\n    if (!msg || !msg.payload) return;\n    scope.cmd = msg.payload.cmd;\n    serverNow = Number(msg.payload.now);\n    arrivedAt = Date.now();\n    update();\n  });\n  var timer = setInterval(function() { scope.$applyAsync(update); }, 250);\n  scope.$on('$destroy', function() { clearInterval(timer); });\n})(scope);\n</script>",
+    "storeOutMessages": true,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "className": "",
+    "x": 640,
+    "y": 460,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "hud-ui-remote-link",
+    "type": "ui_template",
+    "z": "robot-tab",
+    "group": "hud-ui-remote-group",
+    "name": "Estado del control y cámara",
+    "order": 2,
+    "width": 4,
+    "height": 2,
+    "format": "<style>\n.hud-link { display: flex; gap: 10px; align-items: center; justify-content: space-between; font-size: 12px; }\n.hud-link .info { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }\n.hud-link .state { grid-column: 1 / -1; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }\n.hud-link .state i { width: 9px; height: 9px; border-radius: 50%; background: #71717a; }\n.hud-link .state.ok i { background: #16a34a; } .hud-link .state.warn i { background: #d97706; } .hud-link .state.err i { background: #dc2626; }\n.hud-link .latched { color: #dc2626; font-weight: 700; }\n.hud-link .cam { display: flex; flex-direction: column; align-items: center; gap: 3px; color: #71717a; }\n.hud-link .joy { position: relative; width: 48px; height: 48px; border-radius: 50%; border: 2px solid rgba(127,127,127,.4); transition: border-color .15s, box-shadow .15s; }\n.hud-link .joy.flash { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.35); }\n.hud-link .joy .dot { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #d97706; transition: left .1s, top .1s; }\n.hud-link .joy .dot.idle { background: #71717a; }\n.hud-link .flash-badge { padding: 0 6px; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 700; font-size: 10px; }\n</style>\n<div class=\"hud-link\" aria-live=\"polite\">\n  <div class=\"info\">\n    <div class=\"state\" ng-class=\"level\"><i></i>Control: {{ stateText }}</div>\n    <span>Batería: {{ online && remote.battery !== null ? remote.battery.toFixed(2) + ' V' : '—' }}</span>\n    <span>RSSI: {{ online && remote.rssi !== null ? remote.rssi + ' dBm' : '—' }}</span>\n    <span>Velocidad: {{ online && remote.speed !== null ? remote.speed : '—' }}</span>\n    <span ng-class=\"{latched: online && remote.stopLatched}\">STOP: {{ online ? (remote.stopLatched ? 'Activo' : 'No') : '—' }}</span>\n  </div>\n  <div class=\"cam\" aria-label=\"Joystick de la cámara\">\n    <div class=\"joy\" ng-class=\"{flash: centerFlash}\"><div class=\"dot\" ng-class=\"{idle: !camMoving}\" ng-style=\"camDot\"></div></div>\n    <span class=\"flash-badge\" ng-if=\"centerFlash\">Centrar</span>\n    <span ng-if=\"!centerFlash\">Cámara</span>\n  </div>\n</div>\n<script>\n(function(scope) {\n  // equipo1/robot/remote/status arrives every 2 s; older than this means the remote went silent.\n  var REMOTE_STALE_MS = 6000;\n  // equipo1/robot/camera only arrives while the camera joystick moves; a lost final zero expires after this.\n  var CAMERA_STALE_MS = 1000;\n  var CENTER_FLASH_MS = 1500;\n  scope.remote = null;\n  scope.camera = null;\n  scope.online = false;\n  scope.level = '';\n  scope.stateText = 'Sin datos';\n  scope.camMoving = false;\n  scope.camDot = { left: '50%', top: '50%' };\n  scope.centerFlash = false;\n  var serverNow = 0, arrivedAt = 0;\n  // Server clock plus local elapsed time: immune to phone/laptop clock skew.\n  function age(at) { return typeof at === 'number' ? Math.max(0, serverNow + (Date.now() - arrivedAt) - at) : Infinity; }\n  function update() {\n    var r = scope.remote, c = scope.camera;\n    scope.online = !!r && r.state === 'online';\n    if (!r) { scope.level = ''; scope.stateText = 'Sin datos'; }\n    else if (!scope.online) { scope.level = 'err'; scope.stateText = 'Desconectado'; }\n    else if (age(r.receivedAt) > REMOTE_STALE_MS) { scope.level = 'warn'; scope.stateText = 'Sin latido'; }\n    else { scope.level = 'ok'; scope.stateText = 'En línea'; }\n    scope.camMoving = !!c && age(c.movedAt) <= CAMERA_STALE_MS && (c.pan !== 0 || c.tilt !== 0);\n    scope.camDot = scope.camMoving\n      ? { left: (50 + c.pan / 255 * 50) + '%', top: (50 - c.tilt / 255 * 50) + '%' }\n      : { left: '50%', top: '50%' };\n    scope.centerFlash = !!c && age(c.centerAt) <= CENTER_FLASH_MS;\n  }\n  scope.$watch('msg', function(msg) {\n    if (!msg || !msg.payload) return;\n    scope.remote = msg.payload.remote;\n    scope.camera = msg.payload.camera;\n    serverNow = Number(msg.payload.now);\n    arrivedAt = Date.now();\n    update();\n  });\n  var timer = setInterval(function() { scope.$applyAsync(update); }, 250);\n  scope.$on('$destroy', function() { clearInterval(timer); });\n})(scope);\n</script>",
+    "storeOutMessages": true,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "className": "",
+    "x": 910,
+    "y": 560,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "hud-ui-robot-state",
+    "type": "ui_template",
+    "z": "robot-tab",
+    "group": "hud-ui-remote-group",
+    "name": "Estado del robot",
+    "order": 3,
+    "width": 4,
+    "height": 2,
+    "format": "<style>\n.hud-state { font-size: 13px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }\n.hud-state .state { grid-column: 1 / -1; font-size: 16px; font-weight: 700; }\n.hud-state .ok { color: #16a34a; } .hud-state .err { color: #dc2626; } .hud-state .idle { color: #71717a; }\n.hud-state .detail { grid-column: 1 / -1; color: #71717a; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n</style>\n<div class=\"hud-state\" aria-live=\"polite\">\n  <div class=\"state\" ng-class=\"!res ? 'idle' : (res.ok === false ? 'err' : 'ok')\">{{ res ? (res.state || 'UNKNOWN') : 'Sin respuesta del robot' }}</div>\n  <span>Motor A: {{ res && res.motorASpeed !== undefined ? res.motorASpeed : '—' }}</span>\n  <span>Motor B: {{ res && res.motorBSpeed !== undefined ? res.motorBSpeed : '—' }}</span>\n  <span>Rutina: {{ res ? (res.routineActive ? 'Activa' : 'No') : '—' }}</span>\n  <span>{{ ageText }}</span>\n  <div class=\"detail\" ng-if=\"res.detail\" title=\"{{res.detail}}\">{{ res.detail }}</div>\n</div>\n<script>\n(function(scope) {\n  scope.res = null;\n  scope.ageText = '';\n  var serverNow = 0, arrivedAt = 0;\n  function update() {\n    var at = scope.res && Date.parse(scope.res.receivedAt);\n    if (!Number.isFinite(at)) return;\n    var age = Math.max(0, serverNow + (Date.now() - arrivedAt) - at);\n    scope.ageText = 'Hace ' + Math.round(age / 1000) + ' s';\n  }\n  scope.$watch('msg', function(msg) {\n    if (!msg || !msg.payload) return;\n    scope.res = msg.payload.res;\n    serverNow = Number(msg.payload.now);\n    arrivedAt = Date.now();\n    update();\n  });\n  var timer = setInterval(function() { scope.$applyAsync(update); }, 1000);\n  scope.$on('$destroy', function() { clearInterval(timer); });\n})(scope);\n</script>",
+    "storeOutMessages": true,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "className": "",
+    "x": 640,
+    "y": 560,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "hud-route-telemetry",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Route telemetry by sensor",
+    "func": "// equipo1/robot/telemetry carries one sensor per message, identified by payload.sensor.\nswitch (msg.payload && msg.payload.sensor) {\n    case 'ultrasonic_distance': return [msg, null];\n    case 'gas': return [null, msg];\n    default: return [null, null];\n}",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 780,
+    "wires": [
+      [
+        "hud-format-distance"
+      ],
+      [
+        "hud-format-gas"
+      ]
+    ]
+  },
+  {
+    "id": "hud-format-distance",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Format distance",
+    "func": "const p = msg.payload;\nconst value = Number(p.value);\nconst valid = p.valid === true && typeof p.value === 'number' && Number.isFinite(value);\nconst alert = { topic: 'distance', payload: { valid, value: valid ? value : null, at: Date.now() } };\nif (!valid) {\n    // Gauge keeps its last value; the text and the alert banner carry the invalid state.\n    return [null, { payload: 'Fuera de rango' }, alert];\n}\nreturn [{ payload: Math.round(value) }, { payload: `${value.toFixed(1)} cm` }, alert];",
+    "outputs": 3,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 620,
+    "y": 760,
+    "wires": [
+      [
+        "hud-ui-distance-gauge"
+      ],
+      [
+        "hud-ui-distance-text"
+      ],
+      [
+        "hud-evaluate-alerts",
+        "robot-page-store"
+      ]
+    ]
+  },
+  {
+    "id": "hud-format-gas",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Format gas",
+    "func": "// Planned sensor: {\"sensor\":\"gas\",\"unit\":\"ppm\",\"valid\":bool,\"value\":number|null,...}\nconst p = msg.payload;\nconst value = Number(p.value);\nconst valid = p.valid !== false && typeof p.value === 'number' && Number.isFinite(value);\nconst unit = typeof p.unit === 'string' && p.unit ? p.unit : 'ppm';\nconst alert = { topic: 'gas', payload: { valid, value: valid ? value : null, unit, at: Date.now() } };\nif (!valid) {\n    return [null, { payload: 'Lectura inválida' }, alert];\n}\nreturn [{ payload: Math.round(value) }, { payload: `${value.toFixed(0)} ${unit}` }, alert];",
+    "outputs": 3,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 620,
+    "y": 840,
+    "wires": [
+      [
+        "hud-ui-gas-gauge"
+      ],
+      [
+        "hud-ui-gas-text"
+      ],
+      [
+        "hud-evaluate-alerts",
+        "robot-page-store"
+      ]
+    ]
+  },
+  {
+    "id": "hud-evaluate-alerts",
+    "type": "function",
+    "z": "robot-tab",
+    "name": "Evaluate alerts",
+    "func": "const OBSTACLE_CM = 30;\n// Placeholder until the gas sensor is chosen and calibrated (same unit the sensor publishes).\nconst GAS_ALERT_PPM = 400;\n// Telemetry older than this is treated as missing (the firmware publishes several times per second).\nconst STALE_MS = 5000;\n\nif (msg.topic === 'distance' || msg.topic === 'gas') {\n    context.set(msg.topic, msg.payload);\n}\nconst now = Date.now();\nconst distance = context.get('distance');\nconst gas = context.get('gas');\nconst fresh = (reading) => reading && now - reading.at < STALE_MS;\n\nconst alerts = [];\nif (fresh(distance) && distance.valid && distance.value < OBSTACLE_CM) {\n    alerts.push(`OBSTÁCULO a ${distance.value.toFixed(0)} cm`);\n}\nif (fresh(gas) && gas.valid && gas.value >= GAS_ALERT_PPM) {\n    alerts.push(`GAS ${gas.value.toFixed(0)} ${gas.unit}`);\n}\n\nlet banner;\nif (alerts.length) {\n    banner = { level: 'danger', text: alerts.join(' · ') };\n} else if (!fresh(distance)) {\n    banner = { level: 'unknown', text: 'SIN DATOS DE DISTANCIA' };\n} else {\n    banner = { level: 'safe', text: 'SEGURO' };\n}\n// Shared with the /robot page through GET /robot/status.\nflow.set('alertState', { banner, thresholds: { obstacleCm: OBSTACLE_CM, gasAlertPpm: GAS_ALERT_PPM } });\nconst key = banner.level + banner.text;\nif (key === context.get('lastBanner')) {\n    return null;\n}\ncontext.set('lastBanner', key);\nreturn { payload: banner };",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 860,
     "y": 800,
     "wires": [
       [
-        "dashboard-build-command"
+        "hud-ui-alert-banner"
+      ]
+    ]
+  },
+  {
+    "id": "hud-ui-alert-banner",
+    "type": "ui_template",
+    "z": "robot-tab",
+    "group": "hud-ui-sensors-group",
+    "name": "Alerta",
+    "order": 1,
+    "width": 4,
+    "height": 1,
+    "format": "<style>\n.hud-banner { height: 100%; min-height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px; font-weight: 800; letter-spacing: .04em; color: #fff; background: #71717a; text-align: center; }\n.hud-banner.safe { background: #16a34a; }\n.hud-banner.danger { background: #dc2626; animation: hud-blink 1s step-start infinite; }\n@keyframes hud-blink { 50% { opacity: .55; } }\n</style>\n<div class=\"hud-banner\" ng-class=\"msg.payload.level\" role=\"status\" aria-live=\"assertive\">{{ msg.payload.text || 'ESPERANDO DATOS' }}</div>",
+    "storeOutMessages": true,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "className": "",
+    "x": 1090,
+    "y": 800,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "hud-ui-distance-gauge",
+    "type": "ui_gauge",
+    "z": "robot-tab",
+    "name": "Distancia",
+    "group": "hud-ui-sensors-group",
+    "order": 2,
+    "width": 2,
+    "height": 2,
+    "gtype": "gage",
+    "title": "Distancia",
+    "label": "cm",
+    "format": "{{value | number:0}}",
+    "min": 0,
+    "max": "200",
+    "colors": [
+      "#dc2626",
+      "#d97706",
+      "#16a34a"
+    ],
+    "seg1": "30",
+    "seg2": "60",
+    "diff": false,
+    "className": "",
+    "x": 880,
+    "y": 720,
+    "wires": []
+  },
+  {
+    "id": "hud-ui-gas-gauge",
+    "type": "ui_gauge",
+    "z": "robot-tab",
+    "name": "Gas",
+    "group": "hud-ui-sensors-group",
+    "order": 3,
+    "width": 2,
+    "height": 2,
+    "gtype": "gage",
+    "title": "Gas",
+    "label": "ppm",
+    "format": "{{value | number:0}}",
+    "min": 0,
+    "max": "1000",
+    "colors": [
+      "#16a34a",
+      "#d97706",
+      "#dc2626"
+    ],
+    "seg1": "200",
+    "seg2": "400",
+    "diff": false,
+    "className": "",
+    "x": 860,
+    "y": 880,
+    "wires": []
+  },
+  {
+    "id": "hud-ui-distance-text",
+    "type": "ui_text",
+    "z": "robot-tab",
+    "group": "hud-ui-sensors-group",
+    "order": 4,
+    "width": 2,
+    "height": 1,
+    "name": "Distancia (texto)",
+    "label": "",
+    "format": "{{msg.payload}}",
+    "layout": "col-center",
+    "className": "",
+    "style": false,
+    "font": "",
+    "fontSize": "",
+    "color": "#000000",
+    "x": 890,
+    "y": 760,
+    "wires": []
+  },
+  {
+    "id": "hud-ui-gas-text",
+    "type": "ui_text",
+    "z": "robot-tab",
+    "group": "hud-ui-sensors-group",
+    "order": 5,
+    "width": 2,
+    "height": 1,
+    "name": "Gas (texto)",
+    "label": "",
+    "format": "{{msg.payload}}",
+    "layout": "col-center",
+    "className": "",
+    "style": false,
+    "font": "",
+    "fontSize": "",
+    "color": "#000000",
+    "x": 870,
+    "y": 920,
+    "wires": []
+  },
+  {
+    "id": "hud-init-sensors",
+    "type": "inject",
+    "z": "robot-tab",
+    "name": "Texto inicial: Sin datos",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "0.5",
+    "topic": "",
+    "payload": "Sin datos",
+    "payloadType": "str",
+    "x": 620,
+    "y": 920,
+    "wires": [
+      [
+        "hud-ui-distance-text",
+        "hud-ui-gas-text"
       ]
     ]
   }

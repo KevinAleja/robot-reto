@@ -1,0 +1,8 @@
+# Direct dependencies of the vision proof of concept (tested on Python 3.13).
+# On Windows/Linux x86 without a GPU, install the CPU build of PyTorch first:
+#   uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# On a Raspberry Pi (aarch64) the default PyPI wheels are already CPU-only.
+ultralytics==8.4.203
+opencv-python==5.0.0.93
+numpy==2.5.4
+paho-mqtt==2.2.0

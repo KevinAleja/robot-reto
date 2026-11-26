@@ -3,7 +3,7 @@
 .pi/
 
 # Credentials
-firmware/esp32_robot_mqtt/secrets.h
+firmware/wifi_secrets/src/wifi_secrets.h
 
 # Node-RED runtime data (only the flows are versioned)
 nodered/data/*
@@ -19,3 +19,31 @@ act1_robot.zip
 
 # Stray file from a redirect to NUL
 NUL
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Python virtual environments
+.venv/
+
+# Photos and schematics (kept locally, not versioned)
+fotos/
+
+# Sensitive files: credentials, keys, environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+credentials*.json
+secrets.h
+
+# Large binaries: model weights and datasets
+*.pt
+*.onnx
+
+# Test caches
+.pytest_cache/
