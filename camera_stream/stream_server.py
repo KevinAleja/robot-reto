@@ -1,8 +1,9 @@
-"""Re-serve the robot camera (ESP32-CAM MJPEG) to any number of browsers.
+"""Re-serve the robot camera (ESP32-CAM MJPEG) to any number of browsers, raw and filtered.
 
 The ESP32-CAM usually accepts a single stream client, so this laptop process is
 its only consumer. It decodes every frame once, re-encodes it and serves it to
-every viewer (the phone HUD included).
+every viewer (the phone HUD included). A second, independent stage applies the
+active crack/edge filter (see filters.py) only while someone watches it.
 
 Sources:
     http://<esp32-ip>:81/stream   ESP32-CAM CameraWebServer MJPEG (or any OpenCV URL)
@@ -10,19 +11,19 @@ Sources:
     test                          synthetic moving test pattern, no hardware needed
 
 Endpoints:
-    /raw.mjpg                     live video (multipart MJPEG)
-    /snapshot.jpg                 latest frame
-    /health                       JSON: source, connected, fps
+    /raw.mjpg                         live video, untouched by the filter stage
+    /filtered.mjpg                    live video with the active filter
+    /snapshot.jpg?view=raw|filtered   latest frame (default raw)
+    /health                           JSON: source, connected, fps, filter, filterMs
 
 MQTT:
-    robot/vision/status (retained)  {"state": "online", "fps": ..., "connected": ..., "source": ...}
-                                    LWT {"state": "offline"}
-
-Extension point: process_frame() is the single per-frame hook where a future
-processing stage (e.g. edge filters) can plug in; today it returns the frame as is.
+    equipo1/robot/vision/filter (subscribed, retained)  "canny" or {"filter": "canny", "params": {...}}
+    equipo1/robot/vision/status (retained)              {"state": "online", "fps", "connected", "filter", "filterMs", ...}
+                                                LWT {"state": "offline"}
 """
 import argparse
 import json
+import logging
 import os
 import socket
 import sys
@@ -30,11 +31,13 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import cv2
 import numpy as np
 import paho.mqtt.client as mqtt
+
+from filters import MODES, apply_filter, merge_params, parse_filter_command, resolve_mode
 
 BOUNDARY = b"frame"
 STALE_FRAME_S = 2.0
@@ -83,6 +86,51 @@ class RateMeter:
     def reset(self):
         self.rate = 0.0
         self.last = None
+
+
+class FilterState:
+    """Thread-safe active filter, its params, cost statistics and viewer count."""
+
+    def __init__(self, mode="none"):
+        self._lock = threading.Lock()
+        self._mode = resolve_mode(mode)
+        self._params = {}
+        self._merged = merge_params()
+        self._ms = None
+        self._ms_at = 0.0
+        self.viewers = 0
+        self.listeners = []
+
+    def get(self):
+        """Return (mode, user params, merged params)."""
+        with self._lock:
+            return self._mode, dict(self._params), self._merged
+
+    def set(self, mode, params=None):
+        merged = merge_params(params)  # Raises before switching if params are unusable.
+        mode = resolve_mode(mode)
+        with self._lock:
+            self._mode, self._params, self._merged = mode, dict(params or {}), merged
+            self._ms = None
+        print(f"Filter set to {mode} {json.dumps(params or {})}")
+        for listener in self.listeners:
+            listener()
+
+    def record(self, elapsed_ms):
+        with self._lock:
+            self._ms = elapsed_ms if self._ms is None else 0.9 * self._ms + 0.1 * elapsed_ms
+            self._ms_at = time.monotonic()
+
+    def filter_ms(self):
+        """Average filter cost per frame, or None when the filter has not run recently."""
+        with self._lock:
+            if self._ms is None or time.monotonic() - self._ms_at > STALE_FRAME_S:
+                return None
+            return round(self._ms, 1)
+
+    def add_viewer(self, delta):
+        with self._lock:
+            self.viewers += delta
 
 
 # --------------------------------------------------------------------------- sources
@@ -177,13 +225,22 @@ def resize_to_width(frame, width):
     return frame
 
 
-def process_frame(frame):
-    """Per-frame processing hook (identity for now). Must return a BGR uint8 frame."""
-    return frame
+# --------------------------------------------------------------------------- pipeline
 
 
-def compose_loop(frames, jpegs, meter, args, stop):
-    """Encode each frame once, so stream clients only copy bytes."""
+def process_frame(frame, filter_state):
+    """Per-frame processing hook: applies the active filter and records its cost."""
+    mode, _, merged = filter_state.get()
+    if mode == "none":
+        return frame
+    started = time.perf_counter()
+    output = apply_filter(frame, mode, merged)
+    filter_state.record((time.perf_counter() - started) * 1000)
+    return output
+
+
+def compose_loop(frames, scaled, raw_jpegs, meter, args, stop):
+    """Resize and encode each frame once for the raw view; the filter never runs here."""
     encode = [cv2.IMWRITE_JPEG_QUALITY, args.jpeg_quality]
     seq = 0
     while not stop.is_set():
@@ -191,21 +248,51 @@ def compose_loop(frames, jpegs, meter, args, stop):
         if new_seq == seq:
             continue
         seq = new_seq
-        frame = process_frame(resize_to_width(frame, args.stream_width))
+        frame = resize_to_width(frame, args.stream_width)
+        scaled.put(frame)
         ok, jpeg = cv2.imencode(".jpg", frame, encode)
         if ok:
-            jpegs.put(jpeg.tobytes())
+            raw_jpegs.put(jpeg.tobytes())
             meter.tick()
+
+
+def encode_filtered(frame, filter_state, raw_jpeg, quality):
+    """Return filtered JPEG bytes; with mode 'none' the raw JPEG is reused as is."""
+    if filter_state.get()[0] == "none" and raw_jpeg is not None:
+        return raw_jpeg
+    ok, jpeg = cv2.imencode(".jpg", process_frame(frame, filter_state), [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return jpeg.tobytes() if ok else None
+
+
+def filter_loop(scaled, raw_jpegs, filtered_jpegs, filter_state, args, stop):
+    """Filter the newest frame only while /filtered.mjpg has viewers; slow filters skip frames."""
+    seq = 0
+    while not stop.is_set():
+        new_seq, frame = scaled.wait_newer(seq, timeout=1.0)
+        if new_seq == seq or filter_state.viewers <= 0:
+            seq = new_seq
+            continue
+        seq = new_seq
+        try:
+            jpeg = encode_filtered(frame, filter_state, raw_jpegs.get()[1], args.jpeg_quality)
+        except (cv2.error, ValueError, TypeError) as error:
+            print(f"Filter failed ({error}); switching to none")
+            filter_state.set("none")
+            continue
+        if jpeg:
+            filtered_jpegs.put(jpeg)
 
 
 # --------------------------------------------------------------------------- MQTT
 
 
 class VisionMqtt:
-    """Publishes a retained online/offline status (the LWT covers crashes and network loss)."""
+    """Receives filter commands and publishes a retained online/offline status."""
 
-    def __init__(self, args, health):
+    def __init__(self, args, filter_state, health):
+        self.filter_topic = f"{args.topic}/filter"
         self.status_topic = f"{args.topic}/status"
+        self.filter_state = filter_state
         self.health = health
         self._broker = f"{args.broker}:{args.mqtt_port}"
         client_id = f"camera-stream-{socket.gethostname()}-{uuid.uuid4().hex[:6]}"
@@ -213,6 +300,8 @@ class VisionMqtt:
         self.client.will_set(self.status_topic, json.dumps({"state": "offline"}), qos=1, retain=True)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
+        self.client.on_message = self._on_message
+        filter_state.listeners.append(self.publish_status)
         self.client.connect_async(args.broker, args.mqtt_port, keepalive=30)
         self.client.loop_start()
 
@@ -220,11 +309,21 @@ class VisionMqtt:
         if reason_code.is_failure:
             print(f"MQTT connection refused: {reason_code}")
             return
-        print(f"MQTT connected to {self._broker}; status on {self.status_topic}")
+        print(f"MQTT connected to {self._broker}; filter on {self.filter_topic}, status on {self.status_topic}")
+        client.subscribe(self.filter_topic, qos=1)  # The retained filter, if any, arrives right away.
         self.publish_status()
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         print(f"MQTT disconnected: {reason_code}")
+
+    def _on_message(self, client, userdata, message):
+        if not message.payload:
+            return  # Empty retained message = topic cleared.
+        try:
+            mode, params = parse_filter_command(message.payload)
+            self.filter_state.set(mode, params)
+        except (ValueError, TypeError) as error:
+            print(f"Ignored filter command {message.payload[:80]!r}: {error}")
 
     def publish_status(self):
         if not self.client.is_connected():
@@ -235,6 +334,8 @@ class VisionMqtt:
             "fps": info["fps"],
             "connected": info["connected"],
             "source": info["source"],
+            "filter": info["filter"],
+            "filterMs": info["filterMs"],
             "host": socket.gethostname(),
             "ts": int(time.time() * 1000),
         }
@@ -255,7 +356,7 @@ def status_loop(publisher, interval, stop):
 # --------------------------------------------------------------------------- HTTP
 
 
-def make_handler(jpegs, health, stop):
+def make_handler(streams, filtered_snapshot, filter_state, health, stop):
     class StreamHandler(BaseHTTPRequestHandler):
         def do_OPTIONS(self):
             self.send_response(204)
@@ -264,12 +365,24 @@ def make_handler(jpegs, health, stop):
             self.end_headers()
 
         def do_GET(self):
-            path = urlsplit(self.path).path
-            if path == "/raw.mjpg":
-                self._stream()
-            elif path == "/snapshot.jpg":
-                self._snapshot()
-            elif path == "/health":
+            url = urlsplit(self.path)
+            if url.path == "/raw.mjpg":
+                self._stream(streams["raw"])
+            elif url.path == "/filtered.mjpg":
+                filter_state.add_viewer(1)
+                try:
+                    self._stream(streams["filtered"])
+                finally:
+                    filter_state.add_viewer(-1)
+            elif url.path == "/snapshot.jpg":
+                view = parse_qs(url.query).get("view", ["raw"])[0]
+                if view == "raw":
+                    self._jpeg(streams["raw"].get()[1])
+                elif view == "filtered":
+                    self._jpeg(filtered_snapshot())
+                else:
+                    self._send(400, "text/plain", b"view must be raw or filtered")
+            elif url.path == "/health":
                 self._send(200, "application/json", json.dumps(health()).encode())
             else:
                 self._send(404, "text/plain", b"Not found")
@@ -288,14 +401,13 @@ def make_handler(jpegs, health, stop):
             self.end_headers()
             self.wfile.write(body)
 
-        def _snapshot(self):
-            _, jpeg = jpegs.get()
+        def _jpeg(self, jpeg):
             if jpeg is None:
                 self._send(503, "text/plain", b"No frame yet")
-                return
-            self._send(200, "image/jpeg", jpeg)
+            else:
+                self._send(200, "image/jpeg", jpeg)
 
-        def _stream(self):
+        def _stream(self, jpegs):
             self.send_response(200)
             self.send_header("Content-Type", f"multipart/x-mixed-replace; boundary={BOUNDARY.decode()}")
             self._common_headers()
@@ -314,7 +426,7 @@ def make_handler(jpegs, health, stop):
                 pass  # The viewer closed the page.
 
         def log_message(self, format, *args):
-            pass  # Keep the console for connection events.
+            pass  # Keep the console for connection and filter events.
 
     return StreamHandler
 
@@ -333,6 +445,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", default=os.environ.get("CAMERA_URL"),
                         help="ESP32-CAM stream URL, webcam index or 'test' (default: $CAMERA_URL)")
+    parser.add_argument("--filter", default="none", choices=MODES,
+                        help="Filter used until a retained equipo1/robot/vision/filter message says otherwise")
     parser.add_argument("--http-host", default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=8000)
     parser.add_argument("--stream-width", type=int, default=640, help="Downscale frames wider than this (0 = keep)")
@@ -343,9 +457,9 @@ def parse_args(argv=None):
     parser.add_argument("--max-failures", type=int, default=20, help="Consecutive failed reads before reconnecting")
     parser.add_argument("--broker", default="broker.hivemq.com")
     parser.add_argument("--mqtt-port", type=int, default=1883)
-    parser.add_argument("--topic", default="robot/vision", help="Prefix for the /status topic")
+    parser.add_argument("--topic", default="equipo1/robot/vision", help="Prefix for the /filter and /status topics")
     parser.add_argument("--status-interval", type=float, default=5.0, help="Seconds between status refreshes")
-    parser.add_argument("--no-mqtt", action="store_true", help="Only serve HTTP, no MQTT status")
+    parser.add_argument("--no-mqtt", action="store_true", help="Only serve HTTP; the filter comes from --filter")
     args = parser.parse_args(argv)
     if not args.source:
         parser.error("set --source or the CAMERA_URL environment variable")
@@ -354,30 +468,46 @@ def parse_args(argv=None):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
     stop = threading.Event()
-    frames, jpegs = Latest(), Latest()
+    frames, scaled = Latest(), Latest()
+    streams = {"raw": Latest(), "filtered": Latest()}
     meters = {"camera": RateMeter(), "output": RateMeter()}
+    filter_state = FilterState(args.filter)
 
     def health():
+        mode, params, _ = filter_state.get()
         last = meters["camera"].last
         connected = last is not None and time.monotonic() - last < STALE_FRAME_S
-        _, jpeg = jpegs.get()
         return {
             "source": args.source,
             "connected": connected,
             "fps": round(meters["camera"].rate, 1) if connected else 0.0,
             "outputFps": round(meters["output"].rate, 1) if connected else 0.0,
-            "hasFrame": jpeg is not None,
+            "hasFrame": streams["raw"].get()[1] is not None,
+            "filter": mode,
+            "params": params,
+            "filterMs": filter_state.filter_ms(),
+            "filteredViewers": filter_state.viewers,
         }
 
-    publisher = None if args.no_mqtt else VisionMqtt(args, health)
+    def filtered_snapshot():
+        """Filter the latest frame on demand, so snapshots work without stream viewers."""
+        _, frame = scaled.get()
+        if frame is None:
+            return None
+        return encode_filtered(frame, filter_state, streams["raw"].get()[1], args.jpeg_quality)
 
-    server = ThreadingHTTPServer((args.http_host, args.http_port), make_handler(jpegs, health, stop))
+    publisher = None if args.no_mqtt else VisionMqtt(args, filter_state, health)
+
+    handler = make_handler(streams, filtered_snapshot, filter_state, health, stop)
+    server = ThreadingHTTPServer((args.http_host, args.http_port), handler)
     server.daemon_threads = True
     workers = [
         threading.Thread(target=capture_loop, args=(args, frames, meters["camera"], stop), daemon=True),
-        threading.Thread(target=compose_loop, args=(frames, jpegs, meters["output"], args, stop), daemon=True),
+        threading.Thread(target=compose_loop, args=(frames, scaled, streams["raw"], meters["output"], args, stop), daemon=True),
+        threading.Thread(target=filter_loop, args=(scaled, streams["raw"], streams["filtered"], filter_state, args, stop), daemon=True),
         threading.Thread(target=server.serve_forever, daemon=True),
     ]
     if publisher:
@@ -386,8 +516,8 @@ def main():
         worker.start()
 
     base = f"http://{lan_address()}:{args.http_port}"
-    print(f"Stream:   {base}/raw.mjpg")
-    print(f"Snapshot: {base}/snapshot.jpg")
+    print(f"Raw:      {base}/raw.mjpg")
+    print(f"Filtered: {base}/filtered.mjpg  (filter: {args.filter}, MQTT {args.topic}/filter)")
     print(f"Health:   {base}/health")
     print("Press Ctrl+C to stop")
 
