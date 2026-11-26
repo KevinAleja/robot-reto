@@ -1,30 +1,30 @@
-# Future idea: YOLOv8 crack segmentation
+# Idea futura: segmentación de grietas con YOLOv8
 
-This proof of concept is kept for reference and is not part of the current robot.
-The original plan ran inference on the edge, on a Raspberry Pi on the robot. That
-plan was dropped. The camera is now an ESP32-CAM, re-streamed by the laptop
+Esta prueba de concepto se conserva como referencia y no forma parte del robot actual.
+El plan original ejecutaba la inferencia en el borde, en una Raspberry Pi montada en el robot. Ese
+plan se descartó. La cámara ahora es una ESP32-CAM, cuyo stream retransmite la laptop
 (`../camera_stream/`).
 
-## What is here
+## Qué contiene
 
-| File | Purpose |
+| Archivo | Propósito |
 |---|---|
-| `crack_poc.py` | Runs the segmentation model on an image or folder and prints `robot/vision`-style JSON plus median and p95 latency |
-| `webcam_poc.py` | Live webcam window with masks and a crack/no-crack banner (`q` quits, `s` saves a frame) |
-| `evaluate.py` | Validates both checkpoints on the test split at 640 and 320 px |
-| `stream_server.py` | MJPEG server with drawn detections and MQTT detection messages. `camera_stream/` reuses its threading and MQTT structure. |
-| `tools/` | Helpers used to inspect the downloaded checkpoints |
-| `requirements.txt` | Pinned dependencies (ultralytics, OpenCV, NumPy, paho-mqtt). The CPU PyTorch install is noted inside. |
-| `weights/`, `data/`, `results/` | Checkpoints (`yolov8n-crack.pt`, `yolov8s-crack.pt`), crack-seg dataset, and outputs. These are git-ignored. |
+| `crack_poc.py` | Ejecuta el modelo de segmentación sobre una imagen o carpeta e imprime JSON con el formato de `robot/vision`, además de la latencia mediana y p95 |
+| `webcam_poc.py` | Ventana en vivo de la webcam con máscaras y un aviso de grieta/sin grieta (`q` sale, `s` guarda un cuadro) |
+| `evaluate.py` | Valida ambos checkpoints sobre el conjunto de prueba a 640 y 320 px |
+| `stream_server.py` | Servidor MJPEG con detecciones dibujadas y mensajes MQTT de detección. `camera_stream/` reutiliza su estructura de hilos y MQTT. |
+| `tools/` | Utilidades usadas para inspeccionar los checkpoints descargados |
+| `requirements.txt` | Dependencias con versión fija (ultralytics, OpenCV, NumPy, paho-mqtt). La instalación de PyTorch para CPU se indica dentro. |
+| `weights/`, `data/`, `results/` | Checkpoints (`yolov8n-crack.pt`, `yolov8s-crack.pt`), dataset crack-seg y resultados. git los ignora. |
 
-## What was measured
+## Qué se midió
 
-- About **45 ms per frame** with `yolov8n-crack` on the laptop CPU (640 px).
-- The first `predict` call takes about **12 s**. `stream_server.py` runs a warm-up
-  predict on a blank frame at startup to keep that out of the metrics.
+- Alrededor de **45 ms por cuadro** con `yolov8n-crack` en la CPU de la laptop (640 px).
+- La primera llamada a `predict` tarda alrededor de **12 s**. `stream_server.py` ejecuta un predict de
+  calentamiento sobre un cuadro en blanco al iniciar para excluir ese tiempo de las métricas.
 
-## Picking it up again
+## Retomar la idea
 
-The easiest route is to run the model on the laptop, inside the
-`camera_stream` per-frame hook (`process_frame`). The laptop already receives
-every frame. Results could go on `robot/vision` as this POC did.
+La ruta más sencilla es ejecutar el modelo en la laptop, dentro del hook por cuadro de
+`camera_stream` (`process_frame`). La laptop ya recibe
+cada cuadro. Los resultados podrían publicarse en `robot/vision`, como lo hacía esta POC.
